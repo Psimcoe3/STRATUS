@@ -1,0 +1,122 @@
+Converting eVolve/Revit Content to Stratus
+
+https://commons.wikimedia.org/wiki/File:Construction_Site.JPG
+Stratus is a cloud-based MEP fabrication platform that leverages BIM models to automate fabrication workflows. It explicitly supports spool assembly definitions and cut lists among its core features
+apps.autodesk.com
+. Stratus also generates nested cut lists for CNC tools and maintains Package BOMs for material stock management
+stratus.build
+. To migrate eVolve/Revit content into Stratus, the spreadsheet should cover all key categories: bill of materials (BOM), cut lists (including nested lists for assemblies), individual part parameters, and assemblies/prefab packages. In practice this means creating multiple tabs (e.g. Conduits, Fittings, Equipment, etc.), each listing Stratus fields and the corresponding Revit/eVolve parameters.
+eVolve MEP Content Categories
+eVolve MEP organizes Revit content into system families and component families. Key system families include:
+Conduit – types by material (EMT, RMC, IMC, PVC, etc.). Each conduit type has routing preferences to use eVolve’s factory elbows and couplings. For example, the EMT and RMC families default to use eVolve elbow and coupling families in spools
+help-electrical.evolvemep.com
+.
+Cable Tray – standard tray types (channel, basket, ladder) by nominal width/depth
+help-electrical.evolvemep.com
+.
+Busway, MC Cable, Flex, Pathway – specialized Revit electrical families configured by eVolve.
+Strut Channels – multiple profiles (e.g. 3‑Hole, 4D channel, etc.) in various materials
+help-electrical.evolvemep.com
+.
+Component families include hangers and hardware. For example, threaded rods and trapeze hangers are grouped into configurable assemblies (used to mount panels and equipment). Hardware families include beam clamps, U-bolts, channel nuts, etc. – eVolve’s content library lists many variants (see e.g. B355 beam clamps and channel nuts
+help-electrical.evolvemep.com
+). Panelboards and switchgear families have their own parameters (mounting height, hole centers, clearance widths)
+help-electrical.evolvemep.com
+. All of these families carry Revit parameters (both built-in and eVolve-defined) for dimensions, materials, quantities, etc. In spreadsheet mapping, every such family and relevant eVolve shared parameter (like eVolve_SubCategoryId or bend lengths) should be included. Bend geometry in conduits is handled by special bend families: eVolve provides families (stub‑90, etc.) that are inserted into conduit runs and driven by parameters. These families ensure only fabricatable bends are modeled and offer optimization tools
+help-electrical.evolvemep.com
+. Such bends and other “fittings” (couplings, insets) should also be represented in the BOM and assembly mapping. In short, everything related to conduit/GRC/RMC/rigid/EMT, elbows/couplings, strut/rod, and hardware – as well as major equipment (panelboards, transformers, etc.) – must be mapped.
+Spreadsheet Structure and Mapping Columns
+The mapping spreadsheet should have multiple tabs by part type or “Part Template” category. For example: Conduits, Fittings/Elbows, Cable Tray, Strut & Supports, Hardware, Equipment (Panelboards, Transformers, etc.), Assemblies/Packages, and Cut Lists. Each tab should list the Stratus field names and data type, whether it’s required, the Revit/eVolve parameter it maps to, and notes. A useful column structure is:
+Field Name – the Stratus property or part field (e.g. STRATUS.Part.ItemNumber, STRATUS.Part.IsCut, or a custom field).
+Data Type – String, Integer, Double, DateTime, etc., as expected by Stratus.
+Required – Yes/No (whether Stratus requires this field).
+Revit/Evolve Parameter – the name of the Revit family or project parameter (shared parameter) to use. For example, the Revit Family Type Mark or an eVolve_ItemNumber parameter could feed STRATUS.Part.ItemNumber.
+Notes – any additional info (units, default values, allowed options, etc.).
+The eVolve CSV Data Exchange can help extract parameters. For instance, one can use an eVolve data profile to export all Conduit instance lengths, diameters, etc. to CSV
+help-electrical.evolvemep.com
+. Such a CSV can then be rearranged to fill the mapping tabs. 
+https://commons.wikimedia.org/wiki/File:Electric_wires,_2020.jpg
+In practice, each part category’s mapping tab might look like this:
+Conduit Tab: Fields for Material (map to Revit Conduit Type), Nominal Size (map to Type parameter), Length (map to Length), PartNumber (map to eVolve part number), etc.
+Fittings Tab (elbows, couplings): Fields like Angle (map to Revit parameter), Radius or Length, Material, and a reference to parent Conduit item.
+Strut & Hangers Tab: Fields for Channel Type (map to eVolve channel profile), Strut Length, Rod Lengths (from eVolve hanger parameters), Hardware size (e.g. bolt size), etc.
+Hardware Tab: Fields for Clamp Type, Size, Finish – map to eVolve hardware families (beam clamp, channel nut, etc.).
+Equipment Tab: Fields for Equipment Type (map to panelboard or transformer type), Count of Breakers, etc.
+Assemblies/Packages Tab: Fields for Spool/Package prefix, number, name – to tie Revit assemblies or eVolve spool IDs to Stratus.
+Cut List Tab: Fields defining cut pieces – e.g. PartNumber, CutLength, CutQuantity; these often link back to the parent assembly or item.
+The wiring panel image above illustrates the complexity of connections: each colored wire and terminal could be treated as an individual Stratus part (or part of an assembly). By listing Stratus fields and matching Revit parameters clearly, you ensure all nested parts and “service points” in the model are captured.
+Workflow: Parts, Assemblies, Cut Lists
+A recommended workflow is:
+Inventory Families: List all eVolve families in use (EMT, RMC, all strut sizes, hanger types, panel families, etc.) and identify the key parameters for each (diameter, material, lengths, counts).
+Define Stratus Part Templates: In Stratus Admin (Company > Part Templates), create templates corresponding to each category above. Configure their Properties, BOM Mappings, and Cut List Mappings tabs to match your columns.
+Configure Shared Parameters: Use Shared Parameters in Revit so each element has a Stratus-recognized identifier. For example, map a shared parameter in Revit to Stratus’s “Item Number” field. In Stratus Company Settings, set the “Property to Map to Item Number” to this shared parameter. This lets Stratus link each Revit part to a Stratus part record.
+Export Part Data: Use Revit schedules or eVolve’s CSV export to pull out instance data. Populate the spreadsheet tabs with existing values (lengths, sizes, quantities). This ensures the Stratus import file has all needed fields for each part.
+Import into Stratus: Load the sheet data into Stratus (via the Stratus Revit add-in or web portal) to create or update parts and assemblies. This establishes the parts library and the basic BOM.
+Sync Assemblies/Spools: In the Revit model, assign or verify the spool/assembly identifiers (which should match the Stratus package definitions). Then use the Stratus Publish tool in Revit to push assemblies. Stratus will either create assemblies from the Revit Assemblies or use “parameter-only assemblies” to group parts by the mapped parameters
+stratus.build
+. (Using parameter-only assemblies can make publishes faster and avoid geometry changes in Revit.)
+Generate Cut Lists: With assemblies in Stratus, it can produce cut lists automatically. These are based on the nested parts of each assembly. Stratus’s nested cut list feature will break down each assembly into cut pieces (e.g. cut lengths of conduit, strut segments) and send instructions to fabrication stations
+stratus.build
+.
+Validation and Iteration: Check that all eVolve parameters have correctly transferred. Adjust the spreadsheet and mappings as needed for any missing fields. Once validated, future Revit- Stratus syncs will maintain the link (e.g. tracking which parts are “Cut” or updating progress).
+By following this structured approach—mapping parts/materials first, then spool/assembly definitions, then cut lists—you ensure a smooth hand-off of your existing library into Stratus’s prefabrication workflow. All eVolve-defined assemblies (trapeze rigs, panel racks, etc.) and nested elements should be represented in the Stratus hierarchy so that data flows seamlessly from BIM to the shop floor
+apps.autodesk.com
+stratus.build
+. References: The Stratus platform description notes its support for spool assemblies and cut lists
+apps.autodesk.com
+, and its emphasis on nested cut lists with Package BOMs
+stratus.build
+. eVolve documentation details the system families for conduit (EMT, RMC, etc.) and their use of elbows/couplings
+help-electrical.evolvemep.com
+, as well as its bend families for conduit runs
+help-electrical.evolvemep.com
+. The Strut and hardware families (3‑hole strut, beam clamps, etc.) are listed in eVolve’s content library
+help-electrical.evolvemep.com
+help-electrical.evolvemep.com
+. Use of eVolve’s CSV Data Exchange for parameter export is documented in its help guide
+help-electrical.evolvemep.com
+. All of these sources inform the comprehensive mapping needed to populate Stratus.
+Citations
+Favicon
+Stratus | Revit | Autodesk App Store
+
+https://apps.autodesk.com/RVT/en/Detail/Index?id=1158341042917819215&appLang=en&os=Web
+Favicon
+Compatible Tooling
+
+https://www.stratus.build/compatible-tooling
+Favicon
+Intro to System Families - EVOLVE Electrical Help
+
+https://help-electrical.evolvemep.com/content/intro-to-system-families
+Favicon
+Intro to System Families - EVOLVE Electrical Help
+
+https://help-electrical.evolvemep.com/content/intro-to-system-families
+Favicon
+Current EVOLVE Families - EVOLVE Electrical Help
+
+https://help-electrical.evolvemep.com/content/current-e-volve-families-list
+Favicon
+Current EVOLVE Families - EVOLVE Electrical Help
+
+https://help-electrical.evolvemep.com/content/current-e-volve-families-list
+Favicon
+Features for Panelboards - EVOLVE Electrical Help
+
+https://help-electrical.evolvemep.com/unique-features-equipment-disconnects-enclose-tab-generic-panelboards-switchboards-transformers/unique-features-for-panelboards
+Favicon
+Intro to Conduit - EVOLVE Electrical Help
+
+https://help-electrical.evolvemep.com/modeling-detailing/intro-to-conduit
+Favicon
+CSV Data Exchange - EVOLVE Electrical Help
+
+https://help-electrical.evolvemep.com/integrations/csv-data-exchange
+All Sources
+Favicon
+apps.autodesk
+Favicon
+stratus
+Favicon
+help-ele...evolvemep
