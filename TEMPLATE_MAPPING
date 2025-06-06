@@ -1,103 +1,101 @@
 import pandas as pd
 
-# Define the column structure
-columns = ["Field Name", "Data Type", "Required", "Revit/Evolve Parameter", "Notes"]
+# Define template structure for each tab with example fields
+conduits_data = {
+    "Field Name": ["STRATUS.Part.ItemNumber", "STRATUS.Part.Description", "STRATUS.Part.Material", "STRATUS.Part.NominalSize", "STRATUS.Part.Length", "STRATUS.Part.IsCut"],
+    "Data Type": ["String", "String", "String", "String", "Double", "Boolean"],
+    "Required": ["Yes", "No", "Yes", "Yes", "Yes", "No"],
+    "Revit/Evolve Parameter": ["eV_Tag_ItemNumber", "Type Comments", "Conduit Material", "Diameter", "Length", "eV_Tag_IsCut"],
+    "Notes": ["Unique part number", "Optional description", "e.g., EMT, RMC", "Nominal diameter in inches", "Length in feet", "Checked if part is cut"]
+}
 
-# Example rows for each category (placeholder entries)
-conduits_data = [
-    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or ConduitType Mark", "Unique part code for conduit"],
-    ["Length", "Double", "Yes", "Length", "Length in feet"],
-    ["Diameter", "Double", "Yes", "Diameter", "Nominal diameter in inches"],
-    ["Material", "String", "Yes", "eV_Tag_Material", "e.g., EMT, RMC, GRC"],
-    ["IsCut", "Integer", "No", "eV_Tag_IsCut", "1 if cut required, 0 otherwise"]
-]
+fittings_data = {
+    "Field Name": ["STRATUS.Part.ItemNumber", "STRATUS.Part.Description", "STRATUS.Part.Angle", "STRATUS.Part.Radius", "STRATUS.Part.Material", "STRATUS.Part.ParentConduitID"],
+    "Data Type": ["String", "String", "Double", "Double", "String", "String"],
+    "Required": ["Yes", "No", "Yes", "Yes", "Yes", "Yes"],
+    "Revit/Evolve Parameter": ["eV_Tag_ItemNumber", "Type Comments", "eV_Tag_Angle", "eV_Tag_BendRadius", "Conduit Material", "eV_Tag_ConduitID"],
+    "Notes": ["Fitting part number", "Description of fitting", "Angle in degrees", "Radius in inches", "e.g., EMT", "Link to parent conduit item"]
+}
 
-fittings_elbows_data = [
-    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or FittingType Mark", "Unique part code for fitting"],
-    ["Angle", "Double", "Yes", "eV_Tag_Angle", "Bend angle in degrees"],
-    ["Radius", "Double", "Yes", "eV_Tag_Radius", "Bend radius in inches"],
-    ["Material", "String", "Yes", "eV_Tag_Material", "e.g., EMT, RMC"],
-    ["ParentConduitPartNumber", "String", "No", "eV_Tag_ParentConduit", "Link to parent conduit part"]
-]
+cable_tray_data = {
+    "Field Name": ["STRATUS.Part.ItemNumber", "STRATUS.Part.Description", "STRATUS.Part.Width", "STRATUS.Part.Depth", "STRATUS.Part.Material", "STRATUS.Part.Length"],
+    "Data Type": ["String", "String", "Double", "Double", "String", "Double"],
+    "Required": ["Yes", "No", "Yes", "Yes", "Yes", "Yes"],
+    "Revit/Evolve Parameter": ["eV_Tag_ItemNumber", "Type Comments", "Tray Width", "Tray Depth", "Tray Material", "Length"],
+    "Notes": ["Tray SKU", "Optional tray description", "Width in inches", "Depth in inches", "e.g., Galvanized Steel", "Length in feet"]
+}
 
-cable_tray_data = [
-    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or TrayType Mark", "Unique part code for tray"],
-    ["Length", "Double", "Yes", "Length", "Length in feet"],
-    ["Width", "Double", "Yes", "Width", "Width in inches"],
-    ["Material", "String", "Yes", "eV_Tag_Material", "Tray material"],
-    ["LoadRating", "String", "No", "eV_Tag_LoadRating", "e.g., Light, Medium, Heavy"]
-]
+strut_supports_data = {
+    "Field Name": ["STRATUS.Part.ItemNumber", "STRATUS.Part.Description", "STRATUS.Part.StrutProfile", "STRATUS.Part.StrutLength", "STRATUS.Part.RodLength", "STRATUS.Part.HardwareType"],
+    "Data Type": ["String", "String", "String", "Double", "Double", "String"],
+    "Required": ["Yes", "No", "Yes", "Yes", "Yes", "Yes"],
+    "Revit/Evolve Parameter": ["eV_Tag_ItemNumber", "Type Comments", "eV_Tag_StrutProfile", "Length", "eV_Tag_RodLength", "eV_Tag_HardwareType"],
+    "Notes": ["Unique part number", "Optional description", "3-Hole, 4D, etc.", "Length of strut in feet", "Rod length in feet", "Beam clamp, channel nut, etc."]
+}
 
-strut_supports_data = [
-    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or StrutType Mark", "Unique part code"],
-    ["Length", "Double", "Yes", "StrutLength", "Length in feet"],
-    ["ChannelProfile", "String", "Yes", "eV_Tag_ChannelProfile", "e.g., 3-Hole, 4D"],
-    ["RodLength", "Double", "No", "eV_Tag_RodLength", "Rod length in feet"],
-    ["HardwareSize", "String", "No", "eV_Tag_HardwareSize", "e.g., 1/2\", 3/8\""]
-]
+hardware_data = {
+    "Field Name": ["STRATUS.Part.ItemNumber", "STRATUS.Part.Description", "STRATUS.Part.HardwareCategory", "STRATUS.Part.Size", "STRATUS.Part.Material"],
+    "Data Type": ["String", "String", "String", "String", "String"],
+    "Required": ["Yes", "No", "Yes", "Yes", "Yes"],
+    "Revit/Evolve Parameter": ["eV_Tag_ItemNumber", "Type Comments", "eV_Tag_HardwareCategory", "eV_Tag_HardwareSize", "eV_Tag_HardwareMaterial"],
+    "Notes": ["Hardware SKU", "Optional description", "Clamp, Nut, Bolt", "Size designation", "Material type"]
+}
 
-hardware_data = [
-    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or HardwareType Mark", "Unique part code"],
-    ["Size", "String", "Yes", "eV_Tag_Size", "e.g., 1/2\", 3/8\""],
-    ["Finish", "String", "No", "eV_Tag_Finish", "e.g., Zinc, Stainless"],
-    ["Quantity", "Integer", "Yes", "Count", "Number of pieces"],
-    ["Material", "String", "Yes", "eV_Tag_Material", "Hardware material"]
-]
+equipment_data = {
+    "Field Name": ["STRATUS.Part.ItemNumber", "STRATUS.Part.Description", "STRATUS.Part.EquipmentType", "STRATUS.Part.ServiceVoltage", "STRATUS.Part.Quantity", "STRATUS.Part.Location"],
+    "Data Type": ["String", "String", "String", "String", "Integer", "String"],
+    "Required": ["Yes", "No", "Yes", "No", "Yes", "No"],
+    "Revit/Evolve Parameter": ["eV_Tag_ItemNumber", "Type Comments", "eV_Tag_EquipmentType", "eV_Tag_ServiceVoltage", "Count", "eV_Tag_Location"],
+    "Notes": ["Equipment SKU", "Optional description", "Panelboard, Transformer", "e.g., 120/208V", "Number of units", "Room or area"]
+}
 
-equipment_data = [
-    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or EquipType Mark", "Unique part code"],
-    ["EquipmentType", "String", "Yes", "eV_Tag_EquipType", "e.g., Panelboard, Transformer"],
-    ["MountHeight", "Double", "No", "eV_Tag_MountHeight", "Mounting height in feet"],
-    ["Material", "String", "No", "eV_Tag_Material", "Equipment material"],
-    ["Quantity", "Integer", "Yes", "Count", "Number of units"]
-]
+assemblies_packages_data = {
+    "Field Name": ["STRATUS.Package.PackageID", "STRATUS.Package.Name", "STRATUS.Package.Description", "STRATUS.Package.AssemblyType", "STRATUS.Package.ParentAssemblyID"],
+    "Data Type": ["String", "String", "String", "String", "String"],
+    "Required": ["Yes", "Yes", "No", "Yes", "No"],
+    "Revit/Evolve Parameter": ["eV_Tag_SpoolID", "Assembly Name", "Type Comments", "eV_Tag_AssemblyType", "eV_Tag_ParentSpoolID"],
+    "Notes": ["Unique spool/package ID", "Name of spool", "Optional description", "Straight, Tee, etc.", "Parent assembly linkage"]
+}
 
-assemblies_packages_data = [
-    ["AssemblyID", "String", "Yes", "eV_Tag_AssemblyID", "Unique assembly identifier"],
-    ["ParentPackageID", "String", "No", "eV_Tag_PackageID", "ID of parent package if nested"],
-    ["Name", "String", "Yes", "eV_Tag_AssemblyName", "Descriptive name"],
-    ["Type", "String", "Yes", "eV_Tag_AssemblyType", "e.g., Conduit Spool, Support Kit"],
-    ["Quantity", "Integer", "Yes", "Count", "Number of assemblies"]
-]
-
-cut_lists_data = [
-    ["CutID", "String", "Yes", "eV_Tag_CutID", "Unique cut identifier"],
-    ["ParentPartNumber", "String", "Yes", "eV_Tag_ParentPart", "Link to parent part"],
-    ["CutLength", "Double", "Yes", "CutLength", "Cut length in feet"],
-    ["Quantity", "Integer", "Yes", "Count", "Number of cuts"],
-    ["Material", "String", "No", "eV_Tag_Material", "Material for cut piece"]
-]
+cut_lists_data = {
+    "Field Name": ["STRATUS.Cut.PartItemNumber", "STRATUS.Cut.CutLength", "STRATUS.Cut.Material", "STRATUS.Cut.Quantity", "STRATUS.Cut.ParentPackageID"],
+    "Data Type": ["String", "Double", "String", "Integer", "String"],
+    "Required": ["Yes", "Yes", "Yes", "Yes", "Yes"],
+    "Revit/Evolve Parameter": ["eV_Tag_ItemNumber", "eV_Tag_CutLength", "Conduit Material", "Count", "eV_Tag_SpoolID"],
+    "Notes": ["Item number of cut part", "Length to cut in feet", "Material type", "Number of cuts", "Link to package/spool"]
+}
 
 # Create DataFrames
-conduits_df = pd.DataFrame(conduits_data, columns=columns)
-fittings_df = pd.DataFrame(fittings_elbows_data, columns=columns)
-cable_tray_df = pd.DataFrame(cable_tray_data, columns=columns)
-strut_supports_df = pd.DataFrame(strut_supports_data, columns=columns)
-hardware_df = pd.DataFrame(hardware_data, columns=columns)
-equipment_df = pd.DataFrame(equipment_data, columns=columns)
-assemblies_df = pd.DataFrame(assemblies_packages_data, columns=columns)
-cut_lists_df = pd.DataFrame(cut_lists_data, columns=columns)
+df_conduits = pd.DataFrame(conduits_data)
+df_fittings = pd.DataFrame(fittings_data)
+df_cable_tray = pd.DataFrame(cable_tray_data)
+df_strut_supports = pd.DataFrame(strut_supports_data)
+df_hardware = pd.DataFrame(hardware_data)
+df_equipment = pd.DataFrame(equipment_data)
+df_assemblies_packages = pd.DataFrame(assemblies_packages_data)
+df_cut_lists = pd.DataFrame(cut_lists_data)
 
-# Write to Excel file
-file_path = "/mnt/data/Stratus_Mapping_Template.xlsx"
-with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
-    conduits_df.to_excel(writer, sheet_name="Conduits", index=False)
-    fittings_df.to_excel(writer, sheet_name="Fittings_Elbows", index=False)
-    cable_tray_df.to_excel(writer, sheet_name="Cable_Tray", index=False)
-    strut_supports_df.to_excel(writer, sheet_name="Strut_Supports", index=False)
-    hardware_df.to_excel(writer, sheet_name="Hardware", index=False)
-    equipment_df.to_excel(writer, sheet_name="Equipment", index=False)
-    assemblies_df.to_excel(writer, sheet_name="Assemblies_Packages", index=False)
-    cut_lists_df.to_excel(writer, sheet_name="Cut_Lists", index=False)
+# Save to Excel with multiple sheets
+excel_path = "/mnt/data/Stratus_Mapping_Template.xlsx"
+with pd.ExcelWriter(excel_path) as writer:
+    df_conduits.to_excel(writer, sheet_name="Conduits", index=False)
+    df_fittings.to_excel(writer, sheet_name="Fittings_Elbows", index=False)
+    df_cable_tray.to_excel(writer, sheet_name="Cable_Tray", index=False)
+    df_strut_supports.to_excel(writer, sheet_name="Strut_Supports", index=False)
+    df_hardware.to_excel(writer, sheet_name="Hardware", index=False)
+    df_equipment.to_excel(writer, sheet_name="Equipment", index=False)
+    df_assemblies_packages.to_excel(writer, sheet_name="Assemblies_Packages", index=False)
+    df_cut_lists.to_excel(writer, sheet_name="Cut_Lists", index=False)
 
-# Display DataFrames to the user
-import ace_tools as tools; tools.display_dataframe_to_user(name="Conduits Mapping", dataframe=conduits_df)
-tools.display_dataframe_to_user(name="Fittings/Elbows Mapping", dataframe=fittings_df)
-tools.display_dataframe_to_user(name="Cable Tray Mapping", dataframe=cable_tray_df)
-tools.display_dataframe_to_user(name="Strut & Supports Mapping", dataframe=strut_supports_df)
-tools.display_dataframe_to_user(name="Hardware Mapping", dataframe=hardware_df)
-tools.display_dataframe_to_user(name="Equipment Mapping", dataframe=equipment_df)
-tools.display_dataframe_to_user(name="Assemblies/Packages Mapping", dataframe=assemblies_df)
-tools.display_dataframe_to_user(name="Cut Lists Mapping", dataframe=cut_lists_df)
+# Display DataFrames to user
+import ace_tools as tools; 
+tools.display_dataframe_to_user(name="Conduits Tab", dataframe=df_conduits)
+tools.display_dataframe_to_user(name="Fittings/Elbows Tab", dataframe=df_fittings)
+tools.display_dataframe_to_user(name="Cable Tray Tab", dataframe=df_cable_tray)
+tools.display_dataframe_to_user(name="Strut & Supports Tab", dataframe=df_strut_supports)
+tools.display_dataframe_to_user(name="Hardware Tab", dataframe=df_hardware)
+tools.display_dataframe_to_user(name="Equipment Tab", dataframe=df_equipment)
+tools.display_dataframe_to_user(name="Assemblies/Packages Tab", dataframe=df_assemblies_packages)
+tools.display_dataframe_to_user(name="Cut Lists Tab", dataframe=df_cut_lists)
 
-file_path
+excel_path
