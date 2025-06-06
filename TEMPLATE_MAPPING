@@ -1,0 +1,103 @@
+import pandas as pd
+
+# Define the column structure
+columns = ["Field Name", "Data Type", "Required", "Revit/Evolve Parameter", "Notes"]
+
+# Example rows for each category (placeholder entries)
+conduits_data = [
+    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or ConduitType Mark", "Unique part code for conduit"],
+    ["Length", "Double", "Yes", "Length", "Length in feet"],
+    ["Diameter", "Double", "Yes", "Diameter", "Nominal diameter in inches"],
+    ["Material", "String", "Yes", "eV_Tag_Material", "e.g., EMT, RMC, GRC"],
+    ["IsCut", "Integer", "No", "eV_Tag_IsCut", "1 if cut required, 0 otherwise"]
+]
+
+fittings_elbows_data = [
+    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or FittingType Mark", "Unique part code for fitting"],
+    ["Angle", "Double", "Yes", "eV_Tag_Angle", "Bend angle in degrees"],
+    ["Radius", "Double", "Yes", "eV_Tag_Radius", "Bend radius in inches"],
+    ["Material", "String", "Yes", "eV_Tag_Material", "e.g., EMT, RMC"],
+    ["ParentConduitPartNumber", "String", "No", "eV_Tag_ParentConduit", "Link to parent conduit part"]
+]
+
+cable_tray_data = [
+    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or TrayType Mark", "Unique part code for tray"],
+    ["Length", "Double", "Yes", "Length", "Length in feet"],
+    ["Width", "Double", "Yes", "Width", "Width in inches"],
+    ["Material", "String", "Yes", "eV_Tag_Material", "Tray material"],
+    ["LoadRating", "String", "No", "eV_Tag_LoadRating", "e.g., Light, Medium, Heavy"]
+]
+
+strut_supports_data = [
+    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or StrutType Mark", "Unique part code"],
+    ["Length", "Double", "Yes", "StrutLength", "Length in feet"],
+    ["ChannelProfile", "String", "Yes", "eV_Tag_ChannelProfile", "e.g., 3-Hole, 4D"],
+    ["RodLength", "Double", "No", "eV_Tag_RodLength", "Rod length in feet"],
+    ["HardwareSize", "String", "No", "eV_Tag_HardwareSize", "e.g., 1/2\", 3/8\""]
+]
+
+hardware_data = [
+    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or HardwareType Mark", "Unique part code"],
+    ["Size", "String", "Yes", "eV_Tag_Size", "e.g., 1/2\", 3/8\""],
+    ["Finish", "String", "No", "eV_Tag_Finish", "e.g., Zinc, Stainless"],
+    ["Quantity", "Integer", "Yes", "Count", "Number of pieces"],
+    ["Material", "String", "Yes", "eV_Tag_Material", "Hardware material"]
+]
+
+equipment_data = [
+    ["PartNumber", "String", "Yes", "eV_Tag_PartNumber or EquipType Mark", "Unique part code"],
+    ["EquipmentType", "String", "Yes", "eV_Tag_EquipType", "e.g., Panelboard, Transformer"],
+    ["MountHeight", "Double", "No", "eV_Tag_MountHeight", "Mounting height in feet"],
+    ["Material", "String", "No", "eV_Tag_Material", "Equipment material"],
+    ["Quantity", "Integer", "Yes", "Count", "Number of units"]
+]
+
+assemblies_packages_data = [
+    ["AssemblyID", "String", "Yes", "eV_Tag_AssemblyID", "Unique assembly identifier"],
+    ["ParentPackageID", "String", "No", "eV_Tag_PackageID", "ID of parent package if nested"],
+    ["Name", "String", "Yes", "eV_Tag_AssemblyName", "Descriptive name"],
+    ["Type", "String", "Yes", "eV_Tag_AssemblyType", "e.g., Conduit Spool, Support Kit"],
+    ["Quantity", "Integer", "Yes", "Count", "Number of assemblies"]
+]
+
+cut_lists_data = [
+    ["CutID", "String", "Yes", "eV_Tag_CutID", "Unique cut identifier"],
+    ["ParentPartNumber", "String", "Yes", "eV_Tag_ParentPart", "Link to parent part"],
+    ["CutLength", "Double", "Yes", "CutLength", "Cut length in feet"],
+    ["Quantity", "Integer", "Yes", "Count", "Number of cuts"],
+    ["Material", "String", "No", "eV_Tag_Material", "Material for cut piece"]
+]
+
+# Create DataFrames
+conduits_df = pd.DataFrame(conduits_data, columns=columns)
+fittings_df = pd.DataFrame(fittings_elbows_data, columns=columns)
+cable_tray_df = pd.DataFrame(cable_tray_data, columns=columns)
+strut_supports_df = pd.DataFrame(strut_supports_data, columns=columns)
+hardware_df = pd.DataFrame(hardware_data, columns=columns)
+equipment_df = pd.DataFrame(equipment_data, columns=columns)
+assemblies_df = pd.DataFrame(assemblies_packages_data, columns=columns)
+cut_lists_df = pd.DataFrame(cut_lists_data, columns=columns)
+
+# Write to Excel file
+file_path = "/mnt/data/Stratus_Mapping_Template.xlsx"
+with pd.ExcelWriter(file_path, engine="xlsxwriter") as writer:
+    conduits_df.to_excel(writer, sheet_name="Conduits", index=False)
+    fittings_df.to_excel(writer, sheet_name="Fittings_Elbows", index=False)
+    cable_tray_df.to_excel(writer, sheet_name="Cable_Tray", index=False)
+    strut_supports_df.to_excel(writer, sheet_name="Strut_Supports", index=False)
+    hardware_df.to_excel(writer, sheet_name="Hardware", index=False)
+    equipment_df.to_excel(writer, sheet_name="Equipment", index=False)
+    assemblies_df.to_excel(writer, sheet_name="Assemblies_Packages", index=False)
+    cut_lists_df.to_excel(writer, sheet_name="Cut_Lists", index=False)
+
+# Display DataFrames to the user
+import ace_tools as tools; tools.display_dataframe_to_user(name="Conduits Mapping", dataframe=conduits_df)
+tools.display_dataframe_to_user(name="Fittings/Elbows Mapping", dataframe=fittings_df)
+tools.display_dataframe_to_user(name="Cable Tray Mapping", dataframe=cable_tray_df)
+tools.display_dataframe_to_user(name="Strut & Supports Mapping", dataframe=strut_supports_df)
+tools.display_dataframe_to_user(name="Hardware Mapping", dataframe=hardware_df)
+tools.display_dataframe_to_user(name="Equipment Mapping", dataframe=equipment_df)
+tools.display_dataframe_to_user(name="Assemblies/Packages Mapping", dataframe=assemblies_df)
+tools.display_dataframe_to_user(name="Cut Lists Mapping", dataframe=cut_lists_df)
+
+file_path
