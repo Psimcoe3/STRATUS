@@ -1,17 +1,17 @@
-Tab 1: Conduits										Summary of Example Entries
-Field Name	Data Type	Required	Revit/Evolve Parameter	Notes						Conduits: Every conduit needs at least ItemNumber, Material, NominalSize, Length.
+Tab 1: Conduits									                                                              							Summary of Example Entries
+Field Name	Data Type	Required	Revit/Evolve Parameter	Notes						                                  Conduits: Every conduit needs at least ItemNumber, Material, NominalSize, Length.
 STRATUS.Part.ItemNumber	String	Yes	eV_Tag_ItemNumber	Unique part SKU or tag for this conduit type (e.g. “EMT‐3/4” )						
 STRATUS.Part.Description	String	No	Type Comments	Optional text description (e.g. “3/4″ EMT Sch. 40, galvanized”)						Fittings/Elbows: Must include ItemNumber, Angle, Radius, Material, and link back to the parent conduit ID.
 STRATUS.Part.Material	String	Yes	Conduit Material	e.g., “EMT”, “RMC”, “GRC”, “Rigid”						
 STRATUS.Part.NominalSize	String	Yes	Diameter	Nominal diameter in inches (e.g., “3/4” or “1½”)						Cable Tray: Needs ItemNumber, Width, Depth, Material, Length.
 STRATUS.Part.Length	Double	Yes	Length	Length in feet (decimal); schedule pulls instance length						
-STRATUS.Part.IsCut	Boolean	No	eV_Tag_IsCut	True if this instance is pre‐cut; else False						Strut & Supports: Must have StrutProfile, StrutLength, RodLength, HardwareType.
+STRATUS.Part.IsCut	Boolean	No	eV_Tag_IsCut	True if this instance is pre‐cut; else False				         		Strut & Supports: Must have StrutProfile, StrutLength, RodLength, HardwareType.
 STRATUS.Part.ParentSpoolID	String	No	eV_Tag_SpoolID	Link back to a spool/assembly ID (if this conduit is in a spool)						
-STRATUS.Part.Slope	Double	No	eV_Tag_Slope	If applicable, slope (in %)						Hardware: Must include HardwareCategory, Size, Material.
+STRATUS.Part.Slope	Double	No	eV_Tag_Slope	If applicable, slope (in %)					                            	Hardware: Must include HardwareCategory, Size, Material.
 STRATUS.Part.ServiceType	String	No	eV_Tag_ServiceType	“Power,” “Lighting,” “Fire Alarm,” etc.						
 STRATUS.Part.InsulationType	String	No	eV_Tag_InsulationType	If conduit is insulated (e.g. “Foam‐XP”); often blank						Equipment: Must include EquipmentType and Quantity; ItemNumber is required.
 										
-Tab 2: Fittings ⁄ Elbows										Assemblies/Packages: Spool/Package ID and Name are mandatory to define a “Package” in Stratus.
+Tab 2: Fittings ⁄ Elbows									                                                     	Assemblies/Packages: Spool/Package ID and Name are mandatory to define a “Package” in Stratus.
 Field Name	Data Type	Required	Revit/Evolve Parameter	Notes						
 STRATUS.Part.ItemNumber	String	Yes	eV_Tag_ItemNumber	Fitting SKU or tag (e.g., “EMT‐90‐ELBOW‐3/4”)						Cut Lists: Each row is a cut piece—ItemNumber, CutLength, Material, Quantity, and must be tied to a ParentPackageID.
 STRATUS.Part.Description	String	No	Type Comments	E.g. “90° Elbow, 3/4″ EMT, galvanized”						
