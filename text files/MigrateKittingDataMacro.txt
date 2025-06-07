@@ -1,0 +1,136 @@
+        public void MigrateKittingData()
+        {
+            const string LegacyKitId = "eVolve_KitId";
+    
+            // Map old parameter names to their new ones.
+            var migrationParameterMapping = new Dictionary<string, string>()
+            {
+                { LegacyKitId, "eV_LBS_Id" },
+                { "eE_KitId_Layout", "eV_LBS_Layout" },
+                { "eE_KitId_Name", "eV_LBS_Name" },
+                { "eE_KitId_ScopeBox", "eV_LBS_ScopeBox" },
+                { "eE_KitId_Status", "eV_LBS_Status" },
+                { "eE_KitId_Type", "eV_LBS_Type" },
+                { "eE_KitId_SubType", null },
+                { "eE_KitId_Location_Area", null },
+                { "eE_KitId_Location_Building", null },
+                { "eE_KitId_Location_Level", null },
+                { "eE_KitId_Location_Room", null },
+            };
+    
+            var continueResult = TaskDialog.Show("Kit Conversion to Locations",
+                "Before running this process, please verify the following:\n"
+                + "\n- All eVolve products are disabled."
+                + "\n- All worksets are currently checked in such that any impacted elements can be modified as needed."
+                + "\n\nWould you like to proceed?",
+                TaskDialogCommonButtons.Yes | TaskDialogCommonButtons.No,
+                TaskDialogResult.No);
+            if (continueResult != TaskDialogResult.Yes)
+            {
+                return;
+            }
+    
+            // Locate container families with data to migrate.
+            var familiesToMigrate = new FilteredElementCollector(Document)
+                .OfClass(typeof(FamilyInstance))
+                .WherePasses(new LogicalOrFilter(new BuiltInCategory[]
+                    {
+                        BuiltInCategory.OST_GenericModel,
+                        BuiltInCategory.OST_Views,
+                    }
+                    .Select(category => (ElementFilter)new ElementCategoryFilter(category, false))
+                    .ToList()))
+                .Cast<FamilyInstance>()
+                .Where(family => family.Symbol.FamilyName.StartsWith("eE_Kit_"))
+                .ToArray();
+    
+            using (var transaction = new Transaction(Document, "Migrate Kits to Locations"))
+            {
+                transaction.Start();
+    
+                foreach (var familyInstance in familiesToMigrate)
+                {
+                    if (familyInstance.Symbol.Family.Name.StartsWith("eE_"))
+                    {
+                        familyInstance.Symbol.Family.Name = "eV_LBS" + familyInstance.Symbol.Family.Name.Remove(0, 2);
+                    }
+    
+                    var type = Document.GetElement(familyInstance.GetTypeId());
+                    if (type.Name.StartsWith("eE_"))
+                    {
+                        type.Name = "eV_LBS" + type.Name.Remove(0, 2);
+                    }
+    
+                    foreach (var migrationEntry in migrationParameterMapping.Where(x => !string.IsNullOrEmpty(x.Value)))
+                    {
+                        var oldParameter = familyInstance.LookupParameter(migrationEntry.Key);
+                        var newParameter = familyInstance.LookupParameter(migrationEntry.Value);
+    
+                        if (newParameter == null)
+                        {
+                            TaskDialog.Show("Conversion Process Failed",
+                                "The conversion process failed."
+                                + "\n\nOne or more expected 'eV_LBS' parameters were not not found."
+                                + "\nThese parameters are automatically created when the latest version of an eVolve product is active when a project is loaded."
+                                + "\nPlease load these parameters and try again."
+                                + "\n\nThe changes made will be rolled back.",
+                                TaskDialogCommonButtons.Close);
+    
+                            transaction.RollBack();
+                            return;
+                        }
+    
+                        if (oldParameter != null && newParameter != null)
+                        {
+                            switch (newParameter.StorageType)
+                            {
+                                case StorageType.Integer:
+                                    newParameter.Set(oldParameter.AsInteger());
+                                    break;
+                                case StorageType.String:
+                                    newParameter.Set(oldParameter.AsString());
+                                    break;
+                                default:
+                                    throw new Exception("Invalid ParameterType");
+                            }
+                        }
+                    }
+                }
+    
+                transaction.Commit();
+            }
+
+            // Remove any old non-family parameters from the model.
+            var definitionsToRemove = new List<Definition>();
+            var bindingIterator = Document.ParameterBindings.ForwardIterator();
+            bindingIterator.Reset();
+            while (bindingIterator.MoveNext())
+            {
+                var definition = bindingIterator.Key;
+                if (definition.Name != LegacyKitId && migrationParameterMapping.ContainsKey(definition.Name))
+                {
+                    definitionsToRemove.Add(definition);
+                }
+            }
+    
+            if (definitionsToRemove.Any())
+            {
+                var removedName = new List<string>();
+                using (var transaction = new Transaction(Document, "Delete Obsolete Kitting Parameters"))
+                {
+                    transaction.Start();
+                    foreach (var definition in definitionsToRemove)
+                    {
+                        removedName.Add(definition.Name);
+                        Document.ParameterBindings.Remove(definition);
+                    }
+                    transaction.Commit();
+                }
+    
+                TaskDialog.Show("Obsolete Kitting Parameters Deleted",
+                    "The following parameters were deleted:\n" + string.Join("", removedName.Select(name => "\n- " + name)),
+                    TaskDialogCommonButtons.Ok);
+            }
+
+            TaskDialog.Show("Conversion Process Completed", "The conversion process completed successfully.\nPlease review your Location Settings.", TaskDialogCommonButtons.Ok);
+        }
