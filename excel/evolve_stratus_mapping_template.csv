@@ -1,0 +1,33 @@
+eVolve Parameter Name,eVolve Parameter Group/Category,Parameter Data Type,Stratus Field Name,Notes/Typical Usage,eVolve Version(s) Available,Revit Parameter Name,Editable Mapping?
+Spool Name,Spooling,Text,Assembly ID,Primary spool name/identifier,2020-2025,Spool Name,Yes
+Spool Number,Spooling,Text,Item Number,Unique spool tracking,2020-2025,Spool Number,Yes
+Spool Status,Spooling,Text,Tracking Status,Current status of spool,2020-2025,Spool Status,Yes
+Spool Type,Spooling,Text,,Type/category of spool,2021-2025,Spool Type,Yes
+Material,BOM,Text,Material,Material type,2020-2025,Material,Yes
+Size,BOM,Text,Size,Nominal size or dimension,2020-2025,Size,Yes
+Quantity,BOM,Integer,Quantity,Item quantity,2020-2025,Quantity,Yes
+Length,BOM/Geometry,Number,Length,Element length,2020-2025,Length,Yes
+Length 2,BOM/Geometry,Number,Length 2,Secondary length (where applicable),2022-2025,Length 2,Yes
+Area,BOM/Geometry,Number,Area,Element area (optional),2020-2025,Area,Yes
+Weight,BOM,Number,Weight,Element or assembly weight,2020-2025,Weight,Yes
+Description,General,Text,Description,Element/assembly description,2020-2025,Description,Yes
+Level,General,Text,Level,Revit level (if mapped),2020-2025,Level,Yes
+System Name,General,Text,System Name,Revit system name,2020-2025,System Name,Yes
+Element ID,General,Text,CAD ID,Revit element unique ID,2020-2025,Element ID,Yes
+Family Name,General,Text,Family,Revit family name,2020-2025,Family,Yes
+Type Name,General,Text,Type,Revit type name,2020-2025,Type Name,Yes
+Point Number,Points,Text,,Field point ID,2021-2025,Point Number,Yes
+Point Description,Points,Text,Description,Description of field point,2021-2025,Point Description,Yes
+X Coordinate,Points,Number,,Point X value,2021-2025,X,Yes
+Y Coordinate,Points,Number,,Point Y value,2021-2025,Y,Yes
+Z Coordinate,Points,Number,,Point Z value,2021-2025,Z,Yes
+User Data 1,User/Custom,Text,User Data 1,Custom field for any use,2020-2025,User Data 1,Yes
+User Data 2,User/Custom,Text,User Data 2,Custom field for any use,2020-2025,User Data 2,Yes
+User Data 3,User/Custom,Text,User Data 3,Custom field for any use,2020-2025,User Data 3,Yes
+User Data 4,User/Custom,Text,User Data 4,Custom field for any use,2020-2025,User Data 4,Yes
+User Data 5,User/Custom,Text,User Data 5,Custom field for any use,2020-2025,User Data 5,Yes
+QR Code,Tracking,Text,QR Code,QR code for field or tracking,2022-2025,QR Code,Yes
+Project ID,Tracking,Text,ProjectID,Stratus/Model project link,2020-2025,ProjectID,Yes
+Model ID,Tracking,Text,ModelID,Stratus model identifier,2020-2025,ModelID,Yes
+Container,Tracking,Text,Container,Shop/Field container assignment,2022-2025,Container,Yes
+Division,Tracking,Text,Division,Project division/area,2021-2025,Division,Yes
