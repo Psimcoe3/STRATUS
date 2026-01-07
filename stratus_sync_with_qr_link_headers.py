@@ -48,6 +48,61 @@ except Exception:
 import smartsheet
 
 ###############################################################################
+###############################################################################
+# Fallback file handling
+###############################################################################
+
+def _prompt_user_on_throttle() -> str:
+    """Prompt the user to choose an action when the STRATUS API is throttled.
+
+    This function prints a message informing the user that the API returned
+    HTTP 429 and asks whether to quit or proceed by uploading an existing
+    cached JSON file.  The user has 60 seconds to respond; if no input is
+    received within that time, an empty string is returned, signalling that
+    the default action (upload) should be taken.
+
+    :return: The user's input lower-cased (e.g. 'q' to quit or 'u' to
+        upload).  An empty string indicates no response within the timeout.
+    """
+    import sys
+    try:
+        import select  # Linux/Unix select for timeout support
+    except ImportError:
+        # Fallback: no select available, just read input without timeout
+        select = None  # type: ignore
+
+    msg = (
+        "\nThe STRATUS API returned an HTTP 429 response (throttled due to excessive usage).\n"
+        "You may either quit and try again later or proceed by uploading the existing\n"
+        "cached JSON file to Smartsheet.  Enter 'q' to quit or 'u' to upload.\n"
+        "If no input is provided within 60 seconds, the script will default to uploading\n"
+        "the cached JSON file.\n"
+    )
+    print(msg)
+    sys.stdout.write("Enter choice [u/q] and press Enter (default: upload): ")
+    sys.stdout.flush()
+    if select is not None:
+        # Wait up to 60 seconds for input
+        try:
+            ready, _, _ = select.select([sys.stdin], [], [], 60)
+        except Exception:
+            ready = None
+        if ready:
+            try:
+                choice = sys.stdin.readline().strip().lower()
+            except Exception:
+                choice = ""
+        else:
+            choice = ""
+    else:
+        try:
+            # Without select, just block for input (no timeout)
+            choice = sys.stdin.readline().strip().lower()
+        except Exception:
+            choice = ""
+    return choice
+
+###############################################################################
 # Configuration
 ###############################################################################
 
@@ -85,6 +140,286 @@ EXCLUDED_STATUSES_RAW = [
     "NO PREFAB (FIELD INSTALL)",
     "Returned/Received",
 ]
+
+# ----------------------------------------------------------------------------
+# Additional configuration for excluded status synchronization
+#
+# The primary Smartsheet specified by SMARTSHEET_SHEET_ID is used to store all
+# active packages after filtering based on the status list above.  Some
+# workflows may require that the filtered (excluded) packages are tracked
+# elsewhere.  To support this, the script can optionally push all packages
+# whose status matches one of the values in ``EXCLUDED_STATUSES_RAW`` to a
+# secondary Smartsheet.  Set ``SMARTSHEET_EXCLUDED_SHEET_ID`` in the
+# environment or modify ``EXCLUDED_STATUSES_SHEET_ID`` below to the ID of
+# that sheet.  If neither is provided the secondary sync is skipped.
+
+# Default secondary sheet ID for excluded packages.  This can be overridden
+# by setting SMARTSHEET_EXCLUDED_SHEET_ID in the environment.
+EXCLUDED_STATUSES_SHEET_ID = os.getenv("SMARTSHEET_EXCLUDED_SHEET_ID", "2819292992065412")
+
+#
+# Fallback JSON file configuration
+#
+# When the STRATUS API is throttled (HTTP 429) the script will offer the user
+# the option to quit or proceed with a cached JSON file.  The cached file
+# location can be configured via the STRATUS_FALLBACK_JSON_PATH environment
+# variable.  If unset, we construct a default path based on this script's
+# location and the hard-coded REPORT_ID.  The default path follows the
+# convention used in some deployments where JSON reports are stored under
+# a ``stratus_reports_by_id`` directory and named ``report_<REPORT_ID>.json``.
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+_default_cache_dir = os.path.join(_script_dir, "stratus_reports_by_id")
+_default_cache_name = f"report_{REPORT_ID}.json"
+_default_cache_path = os.path.join(_default_cache_dir, _default_cache_name)
+FALLBACK_JSON_PATH = os.getenv("STRATUS_FALLBACK_JSON_PATH", _default_cache_path)
+
+###############################################################################
+# Excluded status synchronization helpers
+###############################################################################
+
+def sync_excluded_to_sheet(
+    excluded_df: pd.DataFrame,
+    smartsheet_client,
+    status_col: Optional[str],
+    now_utc: str,
+    *,
+    json_keys: Optional[List[str]] = None,
+    create_missing_columns: bool = True,
+) -> None:
+    """Synchronize excluded packages to a secondary Smartsheet.
+
+    This helper creates or updates rows in another Smartsheet to record
+    information about packages whose status placed them on the exclusion
+    list.  Only a subset of columns is written: the unique package ID
+    (``REQUIRED_ID_COL``), the human-readable status text, the package name
+    with a hyperlink pointing to the QR code (if available), and the audit
+    timestamp column (``AUDIT_COL``).
+
+    :param excluded_df: DataFrame containing only the rows that were
+        excluded from the primary sheet due to their status.  Each row
+        should include at least ``STRATUS.Package.Id`` and the column
+        identified by ``status_col``.  Additional fields used to populate
+        the package name and QR code hyperlink will be discovered
+        automatically.
+    :param smartsheet_client: Authenticated Smartsheet client instance.
+    :param status_col: Name of the DataFrame column containing the raw
+        status values.  The raw values will be converted to strings for
+        display in the secondary sheet.  If None, the status field is
+        omitted.
+    :param now_utc: Timestamp string used for the audit column.
+    :param create_missing_columns: Whether to create any columns missing from
+        the secondary sheet.  Defaults to True.
+    :param json_keys: Optional ordered list of keys from the STRATUS JSON
+        records.  If provided, these keys (except for Id and package id)
+        will be normalized to column titles and used to build the secondary
+        sheet.  If not provided, the keys will be derived from the
+        ``excluded_df``.
+    """
+    # Determine the target sheet ID from environment or constant.  Abort if
+    # not configured.
+    sheet_id_env = os.getenv("SMARTSHEET_EXCLUDED_SHEET_ID")
+    try:
+        sheet_id = int(sheet_id_env) if sheet_id_env else int(EXCLUDED_STATUSES_SHEET_ID)
+    except Exception:
+        print(
+            "[EXCLUDED] WARNING: Invalid secondary sheet ID provided; skipping excluded sync.",
+            file=sys.stderr,
+        )
+        return
+    # If there is no data or an empty DataFrame, there is nothing to sync
+    if excluded_df is None or excluded_df.empty:
+        print("[EXCLUDED] No excluded packages to sync to secondary sheet.")
+        return
+    print(f"[EXCLUDED] Syncing {len(excluded_df)} excluded packages to Smartsheet {sheet_id}...")
+
+    # Identify columns for name and QR code within the excluded dataframe
+    name_src = pick_col(
+        excluded_df,
+        [
+            "Name",
+            "STRATUS.Name",
+            "Stratus.Name",
+            "STRATUS.Package.Name",
+            "Package Name",
+            "Package.Name",
+        ],
+    )
+    qrcode_src = pick_col(excluded_df, ["STRATUS.Package.QRCode"])
+    # Title for the display column containing the package name.  This must
+    # match the logic used in the main sync to ensure consistent labelling.
+    qrcode_col_title = normalize_title("STRATUS.Package.QRCode")
+
+    # Fetch the target sheet and existing column metadata
+    try:
+        sheet, col_id_by_name = get_sheet_and_columns(smartsheet_client, sheet_id)
+    except Exception as e:
+        print(
+            f"[EXCLUDED] ERROR retrieving secondary sheet {sheet_id}: {e}",
+            file=sys.stderr,
+        )
+        return
+
+    # Build a mapping of column titles to their type for the secondary sheet
+    col_type_by_name = {c.title: getattr(c, "type", None) for c in sheet.columns}
+
+    # Determine which columns are required for excluded rows
+    # Always require the unique ID and audit timestamp columns
+    required_titles: set = {REQUIRED_ID_COL, AUDIT_COL}
+    # Derive a list of JSON keys to include in the secondary sheet.  If
+    # json_keys was not provided, collect keys from the excluded DataFrame.
+    if json_keys is not None:
+        json_keys_local = list(json_keys)
+    else:
+        json_keys_local = collect_keys(excluded_df) if excluded_df is not None else []
+    # Build a mapping from JSON keys to column titles using the same
+    # normalization as the main sync.  Skip Id and package Id keys.
+    json_to_title: Dict[str, str] = {}
+    for key in json_keys_local:
+        if key in ("Id", "id", "STRATUS.Package.Id"):
+            continue
+        title = normalize_title(key)
+        json_to_title[key] = title
+        required_titles.add(title)
+    # Add the QR code display column if name information is available
+    if name_src:
+        required_titles.add(qrcode_col_title)
+
+    # Create any missing columns if permitted
+    if create_missing_columns:
+        missing_cols = [t for t in required_titles if t not in col_id_by_name]
+        if missing_cols:
+            # Add each missing column individually.  When adding columns via
+            # Smartsheet API, all columns in a single request must specify
+            # the same index.  To avoid index mismatch errors, create one
+            # column per request and refresh sheet metadata after each.
+            anchor_index = len(col_id_by_name)
+            for t in missing_cols:
+                col = smartsheet.models.Column()
+                col.title = t
+                col.type = "TEXT_NUMBER"
+                col.index = anchor_index  # insert new columns at the end
+                col.primary = False
+                try:
+                    _ = smartsheet_client.Sheets.add_columns(sheet_id, [col])
+                except Exception as e:
+                    print(
+                        f"[EXCLUDED] ERROR creating column '{t}' in secondary sheet: {e}",
+                        file=sys.stderr,
+                    )
+                    # Continue with the next column
+                    continue
+                # Refresh sheet metadata after adding this column
+                try:
+                    sheet, col_id_by_name = get_sheet_and_columns(smartsheet_client, sheet_id)
+                    col_type_by_name = {c.title: getattr(c, "type", None) for c in sheet.columns}
+                except Exception:
+                    pass
+
+    # Build a mapping of existing rows in the secondary sheet keyed by package ID
+    try:
+        existing = build_existing_row_map(sheet)
+    except Exception as e:
+        print(
+            f"[EXCLUDED] ERROR building row map for secondary sheet: {e}",
+            file=sys.stderr,
+        )
+        return
+
+    adds: List[smartsheet.models.Row] = []
+    updates: List[smartsheet.models.Row] = []
+
+    # Loop over each excluded package and prepare row data
+    for idx, row in excluded_df.iterrows():
+        pkg_id = str(row.get("STRATUS.Package.Id", "")).strip()
+        if not pkg_id:
+            continue
+        # Construct data dictionary for the row
+        data_by_colname: Dict[str, object] = {
+            REQUIRED_ID_COL: pkg_id,
+            AUDIT_COL: now_utc,
+        }
+        # Populate all dynamic fields from the JSON mapping
+        for key, title in json_to_title.items():
+            try:
+                val = row.get(key)
+            except Exception:
+                val = None
+            # Normalize pandas NaN to None
+            if isinstance(val, float) and pd.isna(val):
+                val = None
+            data_by_colname[title] = val
+        # Prepare optional hyperlink for package name
+        hyperlinks: Dict[str, str] = {}
+        if name_src:
+            display_name = row.get(name_src)
+            # Override the QR code display column with the package name
+            data_by_colname[qrcode_col_title] = display_name
+            # If there is a QR code URL and it looks like a URL, attach as hyperlink
+            if qrcode_src:
+                link_url = row.get(qrcode_src)
+                if isinstance(link_url, str) and link_url.lower().startswith(("http://", "https://")):
+                    hyperlinks[qrcode_col_title] = link_url
+        # Decide whether to add or update
+        if pkg_id in existing:
+            current = existing[pkg_id]["cells"]
+            current_links = existing[pkg_id].get("hyperlinks", {})
+            changed: Dict[str, object] = {}
+            # Determine changed values
+            for col_name, new_val in data_by_colname.items():
+                cur_val = current.get(col_name)
+                # Normalize floats representing NaN to None
+                if isinstance(new_val, float) and pd.isna(new_val):
+                    new_val = None
+                if new_val != cur_val:
+                    changed[col_name] = new_val
+            # Only update hyperlink if it has changed
+            for col_name, url in hyperlinks.items():
+                if col_name in col_id_by_name:
+                    if current_links.get(col_name) != url:
+                        changed.setdefault(col_name, current.get(col_name))
+            if changed:
+                update_row = smartsheet.models.Row()
+                update_row.id = existing[pkg_id]["rowId"]
+                update_row.cells = cells_for_row_update(col_id_by_name, changed, hyperlinks=hyperlinks)
+                updates.append(update_row)
+        else:
+            add_row = smartsheet.models.Row()
+            add_row.to_top = True
+            add_row_data = dict(data_by_colname)
+            add_row.cells = cells_for_row_update(col_id_by_name, add_row_data, hyperlinks=hyperlinks)
+            adds.append(add_row)
+
+    # Write rows in batches of up to 400 (Smartsheet API limit)
+    def chunk(seq, n):
+        for i in range(0, len(seq), n):
+            yield seq[i : i + n]
+
+    added_count = 0
+    for batch in chunk(adds, 400):
+        if not batch:
+            continue
+        try:
+            resp = smartsheet_client.Sheets.add_rows(sheet_id, batch)
+            added_count += len(resp.result)
+        except Exception as e:
+            print(f"[EXCLUDED] ERROR adding rows: {e}", file=sys.stderr)
+
+    updated_count = 0
+    for batch in chunk(updates, 400):
+        if not batch:
+            continue
+        try:
+            batch = merge_updates_by_rowid(batch)
+            if not batch:
+                continue
+            resp = smartsheet_client.Sheets.update_rows(sheet_id, batch)
+            updated_count += len(resp.result)
+        except Exception as e:
+            print(f"[EXCLUDED] ERROR updating rows: {e}", file=sys.stderr)
+
+    print(
+        f"[EXCLUDED] Sync complete. Added {added_count}, Updated {updated_count} in secondary sheet {sheet_id}."
+    )
 
 ###############################################################################
 # STRATUS API fetch
@@ -415,7 +750,97 @@ def main():
     smartsheet_client.errors_as_exceptions(True)
 
     print("[1/6] Fetching STRATUS report JSON (hardcoded)...")
-    rows = fetch_report_json()
+    # Attempt to fetch the report JSON.  If the STRATUS API is being throttled
+    # (HTTP 429), prompt the user for a course of action.  The user can quit
+    # or choose to upload a cached JSON file.  If no response is received
+    # within 60 seconds, the cached file will be used automatically.
+    try:
+        rows = fetch_report_json()
+    except RuntimeError as _e:
+        err_msg = str(_e)
+        if "HTTP 429" in err_msg or "throttled" in err_msg.lower():
+            choice = _prompt_user_on_throttle()
+            # Interpret the choice: any input starting with 'q' is a quit
+            if choice and choice.startswith("q"):
+                print("User chose to quit due to STRATUS API throttling.")
+                return
+            # Default or 'u' triggers upload of cached JSON
+            fallback_path = FALLBACK_JSON_PATH
+            if not os.path.exists(fallback_path):
+                # Prompt the user for an alternate JSON file path
+                print(
+                    f"WARNING: The default cached JSON file '{fallback_path}' was not found.",
+                    file=sys.stderr,
+                )
+                # Ask for a file path with a timeout of 60 seconds.  If the user
+                # provides nothing, the script will abort.  Use select for a
+                # timeout if available.
+                print(
+                    "Please enter the path to an existing JSON file to upload, or press Enter to quit."
+                )
+                sys.stdout.write("JSON file path: ")
+                sys.stdout.flush()
+                try:
+                    import select as _sel  # type: ignore
+                except Exception:
+                    _sel = None  # type: ignore
+                user_path = ""
+                if _sel is not None:
+                    try:
+                        ready, _, _ = _sel.select([sys.stdin], [], [], 60)
+                    except Exception:
+                        ready = None
+                    if ready:
+                        try:
+                            user_path = sys.stdin.readline().strip()
+                        except Exception:
+                            user_path = ""
+                    else:
+                        user_path = ""
+                else:
+                    # Without select, just read input (blocking)
+                    try:
+                        user_path = sys.stdin.readline().strip()
+                    except Exception:
+                        user_path = ""
+                if not user_path:
+                    print("No JSON file provided. Exiting due to throttled API.")
+                    return
+                fallback_path = user_path
+                if not os.path.exists(fallback_path):
+                    print(
+                        f"The specified JSON file '{fallback_path}' does not exist. Exiting.",
+                        file=sys.stderr,
+                    )
+                    return
+            try:
+                with open(fallback_path, "r", encoding="utf-8") as f:
+                    rows = json.load(f)
+                print(
+                    f"Loaded {len(rows)} records from JSON file '{fallback_path}' due to API throttling."
+                )
+            except Exception as exc:
+                print(
+                    f"ERROR: Failed to read JSON file '{fallback_path}': {exc}",
+                    file=sys.stderr,
+                )
+                return
+        else:
+            # Not a throttling error; re-raise
+            raise
+    # Persist the fetched JSON to the fallback cache for future runs.  Ensure
+    # that the parent directory exists before writing the file.
+    try:
+        cache_dir = os.path.dirname(FALLBACK_JSON_PATH)
+        if cache_dir and not os.path.isdir(cache_dir):
+            os.makedirs(cache_dir, exist_ok=True)
+        with open(FALLBACK_JSON_PATH, "w", encoding="utf-8") as f:
+            json.dump(rows, f)
+    except Exception as exc:
+        print(
+            f"WARNING: Could not write fallback JSON cache to '{FALLBACK_JSON_PATH}': {exc}",
+            file=sys.stderr,
+        )
     print(f"Loaded {len(rows)} records for reportId={REPORT_ID}")
 
     print("[2/6] Converting to DataFrame...")
@@ -423,6 +848,15 @@ def main():
     if df.empty:
         print("No data returned from STRATUS for this report.")
         return
+
+    # Keep a copy of the full DataFrame before filtering so that excluded
+    # packages can be synchronized to a secondary sheet later on.
+    full_df = df.copy()
+    # Collect JSON keys from the full DataFrame to ensure all fields are
+    # available for the excluded sheet.  These keys will be passed to the
+    # excluded sync so that all columns from the STRATUS report are
+    # represented in the secondary sheet.
+    json_keys_all = collect_keys(full_df)
 
     # Determine JSON keys and build write_df template
     json_keys = collect_keys(df)
@@ -436,16 +870,18 @@ def main():
             "Required 'STRATUS.Package.Id' not found in data. Available: " + available
         )
 
-    # Build excluded set and detect status column
+    # Build excluded set and detect status column using the full DataFrame
     excluded_set = build_excluded_status_set()
-    status_col = find_best_status_column(df, excluded_set)
+    status_col = find_best_status_column(full_df, excluded_set)
 
+    # Identify packages to exclude and split the DataFrame accordingly
     excluded_pkg_ids: Set[str] = set()
+    excluded_df: pd.DataFrame = pd.DataFrame()
     if status_col:
-        # Normalize status values and build exclusion mask
-        status_norm = df[status_col].apply(normalize_status_value)
+        status_norm = full_df[status_col].apply(normalize_status_value)
         exclude_mask = status_norm.apply(lambda s: (s in excluded_set) if s else False)
-        excluded_pkg_ids = set(df.loc[exclude_mask, pkg_id_col].astype(str).tolist())
+        excluded_df = full_df.loc[exclude_mask].reset_index(drop=True)
+        excluded_pkg_ids = set(excluded_df[pkg_id_col].astype(str).tolist())
         removed = int(exclude_mask.sum())
         if removed:
             print(
@@ -453,18 +889,19 @@ def main():
             )
             # Show a breakdown of excluded statuses for logging
             try:
-                counts = df.loc[exclude_mask, status_col].astype(str).value_counts().head(20)
+                counts = full_df.loc[exclude_mask, status_col].astype(str).value_counts().head(20)
                 for k, v in counts.items():
                     print(f"  - {k}: {v}")
             except Exception:
                 pass
-        # Filter df in place
-        df = df.loc[~exclude_mask].reset_index(drop=True)
+        # Build df from only non-excluded packages
+        df = full_df.loc[~exclude_mask].reset_index(drop=True)
     else:
         print(
             "[FILTER] WARNING: Could not confidently detect a Status/TrackingStatus column in this report. "
             "No status filtering applied."
         )
+        df = full_df
 
     # Build Smartsheet-facing DataFrame after filtering
     write_df[REQUIRED_ID_COL] = df[pkg_id_col].astype(str)
@@ -490,6 +927,11 @@ def main():
 
     print("[3/6] Loading Smartsheet and columns...")
     sheet, col_id_by_name = get_sheet_and_columns(smartsheet_client, sheet_id)
+    # Build a mapping from column title to column type.  This will be used
+    # later to convert values into appropriate types before sending to
+    # Smartsheet.  For example, date columns require values in ISO date
+    # format (YYYY-MM-DD).
+    col_type_by_name = {c.title: getattr(c, "type", None) for c in sheet.columns}
 
     # Determine which columns are needed
     required_titles = {REQUIRED_ID_COL, AUDIT_COL}
@@ -513,6 +955,8 @@ def main():
             if cols_to_add:
                 _ = smartsheet_client.Sheets.add_columns(sheet_id, cols_to_add)
                 sheet, col_id_by_name = get_sheet_and_columns(smartsheet_client, sheet_id)
+                # also update col_type_by_name after adding
+                col_type_by_name = {c.title: getattr(c, "type", None) for c in sheet.columns}
     else:
         missing = [t for t in needed if t not in col_id_by_name]
         if missing:
@@ -566,11 +1010,29 @@ def main():
         key = str(r.get(REQUIRED_ID_COL, "")).strip()
         if not key:
             continue
-        # Build a row's data dict for update/add
-        data = {
-            col: (None if (isinstance(r.get(col), float) and pd.isna(r.get(col))) else r.get(col))
-            for col in writable_cols
-        }
+        # Build a row's data dict for update/add.  Normalize NaN to None,
+        # and convert date columns to the expected ISO date format.  Smartsheet
+        # expects date-only columns to be provided as 'YYYY-MM-DD'.  Values that
+        # cannot be parsed as dates will be set to None to avoid API errors.
+        data = {}
+        for col in writable_cols:
+            val = r.get(col)
+            # Convert pandas NaN to None
+            if isinstance(val, float) and pd.isna(val):
+                data[col] = None
+            else:
+                col_type = col_type_by_name.get(col)
+                if col_type and str(col_type).upper() == "DATE" and val not in (None, ""):
+                    try:
+                        dt = pd.to_datetime(val, errors="coerce")
+                        if pd.notna(dt):
+                            data[col] = dt.date().isoformat()
+                        else:
+                            data[col] = None
+                    except Exception:
+                        data[col] = None
+                else:
+                    data[col] = val
         # Build hyperlink mapping for QR code column
         hyperlinks: Dict[str, str] = {}
         if qrcode_col_title in writable_cols:
@@ -592,6 +1054,7 @@ def main():
             changed: Dict[str, object] = {}
             for col, new_val in data.items():
                 cur_val = current.get(col)
+                # Convert NaN represented as float to None
                 if isinstance(new_val, float) and pd.isna(new_val):
                     new_val = None
                 if new_val != cur_val:
@@ -638,6 +1101,24 @@ def main():
         resp = smartsheet_client.Sheets.update_rows(sheet_id, batch)
         updated_count += len(resp.result)
 
+    # Synchronize excluded packages to the secondary sheet, if configured.  This
+    # occurs after updates to the primary sheet so that the audit timestamp
+    # remains consistent across both operations.  Pass along the same
+    # status column and timestamp used earlier.
+    try:
+        if 'excluded_df' in locals() and excluded_df is not None and not excluded_df.empty:
+            # Pass the full set of JSON keys so that the secondary sheet
+            # includes all available columns from the STRATUS report.
+            sync_excluded_to_sheet(
+                excluded_df,
+                smartsheet_client,
+                status_col,
+                now_utc,
+                json_keys=json_keys_all,
+            )
+    except Exception as exc:
+        print(f"[EXCLUDED] ERROR during secondary sync: {exc}", file=sys.stderr)
+
     print(f"Done. Added {added}, Updated {updated_count}. Timestamp (UTC): {now_utc}")
 
 
@@ -647,3 +1128,4 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"ERROR: {e}", file=sys.stderr)
         sys.exit(2)
+
