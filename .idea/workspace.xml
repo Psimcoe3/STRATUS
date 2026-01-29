@@ -1,7 +1,28 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
   <component name="ChangeListManager">
-    <list default="true" id="3950e397-5fb3-48ef-8965-a61016d5e17e" name="Changes" comment="" />
+    <list default="true" id="3950e397-5fb3-48ef-8965-a61016d5e17e" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Array  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  BIM  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Class  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Element ID  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Element UID  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Events  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  FAQ  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Iterator  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Method  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Namespace  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Overloading  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Properties  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Revit Families  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Revit Parameters  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Revit Types  Autodesk.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/INFO/Auotdesk Markdowns/Glossary of Autodesk Revit Terms/Help  Sets  Autodesk.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -10,21 +31,21 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "Psimcoe3"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Psimcoe3&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/Psimcoe3/STRATUS.git",
-    "accountId": "136cc2df-5432-491a-a644-ee6b7ac0351d"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Psimcoe3/STRATUS.git&quot;,
+    &quot;accountId&quot;: &quot;136cc2df-5432-491a-a644-ee6b7ac0351d&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 5
-}]]></component>
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 5
+}</component>
   <component name="ProjectId" id="2y9mBpnKIG3QfQcYP3EIfmPQBqC" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -35,13 +56,20 @@
     "ModuleVcsDetector.initialDetectionPerformed": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main"
+    "git-widget-placeholder": "main",
+    "ignore.virus.scanning.warn.message": "true"
   }
 }]]></component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\Paul\BIM_STRATUS\INFO\Auotdesk Markdowns\Glossary of Autodesk Revit Terms" />
+      <recent name="C:\Users\Paul\BIM_STRATUS\INFO" />
+    </key>
+  </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-python-sdk-dfff61a61320-9cdd278e9d02-com.jetbrains.pycharm.community.sharedIndexes.bundled-PC-251.25410.159" />
+        <option value="bundled-python-sdk-e0ed3721d81e-36ea0e71a18c-com.jetbrains.pycharm.pro.sharedIndexes.bundled-PY-251.25410.159" />
       </set>
     </attachedChunks>
   </component>
