@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="3950e397-5fb3-48ef-8965-a61016d5e17e" name="Changes" comment="" />
+    <list default="true" id="3950e397-5fb3-48ef-8965-a61016d5e17e" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/STRATUS.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/STRATUS.iml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/misc.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -39,16 +43,17 @@
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
     "git-widget-placeholder": "main",
-    "ignore.virus.scanning.warn.message": "true"
+    "ignore.virus.scanning.warn.message": "true",
+    "settings.editor.selected.configurable": "com.intellij.pycharm.community.ide.impl.configuration.PythonContentEntriesConfigurable"
   }
 }]]></component>
   <component name="RecentsManager">
     <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\Paul\BIM_STRATUS" />
       <recent name="C:\Users\Paul\BIM_STRATUS\INFO\Auotdesk_Markdowns\REVIT_KB_MDs\z_Combined_Markdown_Files" />
       <recent name="C:\Users\Paul\BIM_STRATUS\INFO\Auotdesk Markdowns\REVIT KB MDs\1.INDEX_REVIT_API" />
       <recent name="C:\Users\Paul\BIM_STRATUS\INFO\Auotdesk Markdowns\REVIT KB MDs\Appendices" />
       <recent name="C:\Users\Paul\BIM_STRATUS\INFO\Auotdesk Markdowns\REVIT KB MDs\Glossary of Autodesk Revit Terms" />
-      <recent name="C:\Users\Paul\BIM_STRATUS\INFO\Auotdesk Markdowns\REVIT KB MDs\Advanced Topics" />
     </key>
   </component>
   <component name="SharedIndexes">
