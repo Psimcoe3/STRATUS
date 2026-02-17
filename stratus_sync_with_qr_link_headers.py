@@ -47,6 +47,9 @@ except Exception:
 
 import smartsheet
 
+from stratus_logger import get_logger
+logger = get_logger(__name__)
+
 ###############################################################################
 ###############################################################################
 # Fallback file handling
@@ -64,6 +67,7 @@ def _prompt_user_on_throttle() -> str:
     :return: The user's input lower-cased (e.g. 'q' to quit or 'u' to
         upload).  An empty string indicates no response within the timeout.
     """
+    logger.debug("Entering _prompt_user_on_throttle()")
     import sys
     try:
         import select  # Linux/Unix select for timeout support
@@ -71,14 +75,15 @@ def _prompt_user_on_throttle() -> str:
         # Fallback: no select available, just read input without timeout
         select = None  # type: ignore
 
-    msg = (
-        "\nThe STRATUS API returned an HTTP 429 response (throttled due to excessive usage).\n"
-        "You may either quit and try again later or proceed by uploading the existing\n"
+    logger.info(
+        "The STRATUS API returned an HTTP 429 response (throttled due to excessive usage)."
+    )
+    print(
+        "\nYou may either quit and try again later or proceed by uploading the existing\n"
         "cached JSON file to Smartsheet.  Enter 'q' to quit or 'u' to upload.\n"
         "If no input is provided within 60 seconds, the script will default to uploading\n"
         "the cached JSON file.\n"
     )
-    print(msg)
     sys.stdout.write("Enter choice [u/q] and press Enter (default: upload): ")
     sys.stdout.flush()
     if select is not None:
@@ -100,6 +105,7 @@ def _prompt_user_on_throttle() -> str:
             choice = sys.stdin.readline().strip().lower()
         except Exception:
             choice = ""
+    logger.debug("User throttle choice: %r", choice)
     return choice
 
 ###############################################################################
@@ -217,20 +223,21 @@ def sync_excluded_to_sheet(
     """
     # Determine the target sheet ID from environment or constant.  Abort if
     # not configured.
+    logger.debug("Entering sync_excluded_to_sheet(df shape=%s, sheet_id=env/%s)",
+                 excluded_df.shape if excluded_df is not None else None, EXCLUDED_STATUSES_SHEET_ID)
     sheet_id_env = os.getenv("SMARTSHEET_EXCLUDED_SHEET_ID")
     try:
         sheet_id = int(sheet_id_env) if sheet_id_env else int(EXCLUDED_STATUSES_SHEET_ID)
     except Exception:
-        print(
-            "[EXCLUDED] WARNING: Invalid secondary sheet ID provided; skipping excluded sync.",
-            file=sys.stderr,
+        logger.warning(
+            "Invalid secondary sheet ID provided; skipping excluded sync."
         )
         return
     # If there is no data or an empty DataFrame, there is nothing to sync
     if excluded_df is None or excluded_df.empty:
-        print("[EXCLUDED] No excluded packages to sync to secondary sheet.")
+        logger.info("[EXCLUDED] No excluded packages to sync to secondary sheet.")
         return
-    print(f"[EXCLUDED] Syncing {len(excluded_df)} excluded packages to Smartsheet {sheet_id}...")
+    logger.info("[EXCLUDED] Syncing %d excluded packages to Smartsheet %s...", len(excluded_df), sheet_id)
 
     # Identify columns for name and QR code within the excluded dataframe
     name_src = pick_col(
@@ -253,10 +260,7 @@ def sync_excluded_to_sheet(
     try:
         sheet, col_id_by_name = get_sheet_and_columns(smartsheet_client, sheet_id)
     except Exception as e:
-        print(
-            f"[EXCLUDED] ERROR retrieving secondary sheet {sheet_id}: {e}",
-            file=sys.stderr,
-        )
+        logger.error("[EXCLUDED] ERROR retrieving secondary sheet %s: %s", sheet_id, e, exc_info=True)
         return
 
     # Build a mapping of column titles to their type for the secondary sheet
@@ -288,6 +292,7 @@ def sync_excluded_to_sheet(
     if create_missing_columns:
         missing_cols = [t for t in required_titles if t not in col_id_by_name]
         if missing_cols:
+            logger.debug("[EXCLUDED] Creating %d missing columns: %s", len(missing_cols), missing_cols)
             # Add each missing column individually.  When adding columns via
             # Smartsheet API, all columns in a single request must specify
             # the same index.  To avoid index mismatch errors, create one
@@ -302,10 +307,7 @@ def sync_excluded_to_sheet(
                 try:
                     _ = smartsheet_client.Sheets.add_columns(sheet_id, [col])
                 except Exception as e:
-                    print(
-                        f"[EXCLUDED] ERROR creating column '{t}' in secondary sheet: {e}",
-                        file=sys.stderr,
-                    )
+                    logger.error("[EXCLUDED] ERROR creating column '%s' in secondary sheet: %s", t, e, exc_info=True)
                     # Continue with the next column
                     continue
                 # Refresh sheet metadata after adding this column
@@ -319,10 +321,7 @@ def sync_excluded_to_sheet(
     try:
         existing = build_existing_row_map(sheet)
     except Exception as e:
-        print(
-            f"[EXCLUDED] ERROR building row map for secondary sheet: {e}",
-            file=sys.stderr,
-        )
+        logger.error("[EXCLUDED] ERROR building row map for secondary sheet: %s", e, exc_info=True)
         return
 
     adds: List[smartsheet.models.Row] = []
@@ -401,8 +400,9 @@ def sync_excluded_to_sheet(
         try:
             resp = smartsheet_client.Sheets.add_rows(sheet_id, batch)
             added_count += len(resp.result)
+            logger.debug("[EXCLUDED] Added batch of %d rows", len(resp.result))
         except Exception as e:
-            print(f"[EXCLUDED] ERROR adding rows: {e}", file=sys.stderr)
+            logger.error("[EXCLUDED] ERROR adding rows: %s", e, exc_info=True)
 
     updated_count = 0
     for batch in chunk(updates, 400):
@@ -414,11 +414,13 @@ def sync_excluded_to_sheet(
                 continue
             resp = smartsheet_client.Sheets.update_rows(sheet_id, batch)
             updated_count += len(resp.result)
+            logger.debug("[EXCLUDED] Updated batch of %d rows", len(resp.result))
         except Exception as e:
-            print(f"[EXCLUDED] ERROR updating rows: {e}", file=sys.stderr)
+            logger.error("[EXCLUDED] ERROR updating rows: %s", e, exc_info=True)
 
-    print(
-        f"[EXCLUDED] Sync complete. Added {added_count}, Updated {updated_count} in secondary sheet {sheet_id}."
+    logger.info(
+        "[EXCLUDED] Sync complete. Added %d, Updated %d in secondary sheet %s.",
+        added_count, updated_count, sheet_id,
     )
 
 ###############################################################################
@@ -436,6 +438,7 @@ def fetch_report_json() -> list:
     company_id = os.getenv("STRATUS_COMPANY_ID")
     hdr_name = os.getenv("STRATUS_AUTH_HEADER_NAME", "app-key")
     hdr_value = os.getenv("STRATUS_AUTH_HEADER_VALUE")
+    logger.debug("Entering fetch_report_json(base_url=%s, company_id=%s)", base_url, company_id)
 
     if not company_id or not hdr_value:
         raise RuntimeError(
@@ -451,7 +454,9 @@ def fetch_report_json() -> list:
         "modelId": 0,
     }
 
+    logger.debug("Request URL=%s, params=%s", url, params)
     resp = requests.get(url, headers=headers, params=params, timeout=300)
+    logger.debug("Response status=%d, content_type=%s", resp.status_code, resp.headers.get("Content-Type"))
     if resp.status_code != 200:
         raise RuntimeError(
             f"HTTP {resp.status_code} from {url}: {(resp.text or '')[:400]}"
@@ -459,12 +464,15 @@ def fetch_report_json() -> list:
 
     data = resp.json()
     if isinstance(data, list):
+        logger.debug("Received %d records (list)", len(data))
         return data
     if isinstance(data, dict):
         # In some cases the list may be nested under an arbitrary key
         for v in data.values():
             if isinstance(v, list):
+                logger.debug("Received %d records (nested list in dict)", len(v))
                 return v
+        logger.debug("Received 1 record (dict)")
         return [data]
     raise RuntimeError("Unexpected JSON shape from STRATUS")
 
@@ -491,6 +499,7 @@ def normalize_title(key: str) -> str:
 
     Long titles are truncated to MAX_COLUMN_TITLE_LEN characters.
     """
+    logger.debug("normalize_title(key=%r)", key)
     if key in ("Id", "id"):
         return REQUIRED_ID_COL
     if key == "STRATUS.Package.QRCode":
@@ -503,6 +512,7 @@ def normalize_title(key: str) -> str:
 
 def collect_keys(df: pd.DataFrame) -> List[str]:
     """Order JSON keys so that package IDs and generic Id fields come first."""
+    logger.debug("Entering collect_keys(columns=%d)", len(df.columns))
     cols = list(df.columns)
     ordered: List[str] = []
     if "STRATUS.Package.Id" in cols:
@@ -519,6 +529,7 @@ def collect_keys(df: pd.DataFrame) -> List[str]:
 
 def dataframe_from_records(rows: list) -> pd.DataFrame:
     """Build a DataFrame from a list of JSON records, flattening nested keys."""
+    logger.debug("Entering dataframe_from_records(rows=%d)", len(rows))
     if not rows:
         return pd.DataFrame()
     return pd.json_normalize(rows)
@@ -539,6 +550,7 @@ def build_existing_row_map(sheet) -> Dict[str, dict]:
     hyperlinks keyed by column title.  Rows without a valid package ID are
     ignored.
     """
+    logger.debug("Entering build_existing_row_map(rows=%d)", len(sheet.rows))
     id_col_id = None
     for c in sheet.columns:
         if c.title == REQUIRED_ID_COL:
@@ -576,6 +588,7 @@ def build_existing_row_map(sheet) -> Dict[str, dict]:
                 "cells": values_by_title,
                 "hyperlinks": links_by_title,
             }
+    logger.debug("build_existing_row_map found %d existing rows", len(existing))
     return existing
 
 
@@ -585,6 +598,7 @@ def cells_for_row_update(
     hyperlinks: Optional[Dict[str, str]] = None,
 ) -> List[smartsheet.models.Cell]:
     """Build a list of Smartsheet Cell objects for an update or add operation."""
+    logger.debug("Entering cells_for_row_update(columns=%d)", len(data_by_colname))
     cells = []
     for name, value in data_by_colname.items():
         if name not in col_id_by_name:
@@ -638,6 +652,7 @@ def normalize_status_value(x) -> str:
     extra whitespace collapsed, and the string case-folded for case-insensitive
     comparison.
     """
+    logger.debug("normalize_status_value(type=%s)", type(x).__name__)
     if x is None:
         return ""
     # If the value is a dict, try to pull out a human-readable field
@@ -676,6 +691,7 @@ def normalize_status_value(x) -> str:
 
 def build_excluded_status_set() -> Set[str]:
     """Return a set of normalized excluded status values."""
+    logger.debug("Entering build_excluded_status_set()")
     return {normalize_status_value(s) for s in EXCLUDED_STATUSES_RAW}
 
 
@@ -699,6 +715,7 @@ def find_best_status_column(df: pd.DataFrame, excluded_set: Set[str]) -> Optiona
         for c in df.columns
         if "status" in str(c).casefold()
     ]
+    logger.debug("find_best_status_column: %d candidates found: %s", len(candidates), candidates)
     # Evaluate candidates
     best_col: Optional[str] = None
     best_matches = -1
@@ -724,6 +741,7 @@ def find_best_status_column(df: pd.DataFrame, excluded_set: Set[str]) -> Optiona
             best_matches = matches
             best_name_score = name_score
     # Only accept if at least one match was found
+    logger.debug("find_best_status_column: best_col=%r, best_matches=%d", best_col, best_matches)
     return best_col if best_matches >= 1 else None
 
 ###############################################################################
@@ -735,21 +753,20 @@ def main():
     token = os.getenv("SMARTSHEET_ACCESS_TOKEN")
     sheet_id_str = os.getenv("SMARTSHEET_SHEET_ID")
     if not token or not sheet_id_str:
-        print(
-            "ERROR: Set SMARTSHEET_ACCESS_TOKEN and SMARTSHEET_SHEET_ID in .env",
-            file=sys.stderr,
-        )
+        logger.error("Set SMARTSHEET_ACCESS_TOKEN and SMARTSHEET_SHEET_ID in .env")
         sys.exit(2)
     try:
         sheet_id = int(sheet_id_str)
     except Exception:
-        print("ERROR: SMARTSHEET_SHEET_ID must be an integer", file=sys.stderr)
+        logger.error("SMARTSHEET_SHEET_ID must be an integer")
         sys.exit(2)
+
+    logger.debug("Config loaded: sheet_id=%s", sheet_id_str)
 
     smartsheet_client = smartsheet.Smartsheet(token)
     smartsheet_client.errors_as_exceptions(True)
 
-    print("[1/6] Fetching STRATUS report JSON (hardcoded)...")
+    logger.info("[1/6] Fetching STRATUS report JSON (hardcoded)...")
     # Attempt to fetch the report JSON.  If the STRATUS API is being throttled
     # (HTTP 429), prompt the user for a course of action.  The user can quit
     # or choose to upload a cached JSON file.  If no response is received
@@ -762,16 +779,13 @@ def main():
             choice = _prompt_user_on_throttle()
             # Interpret the choice: any input starting with 'q' is a quit
             if choice and choice.startswith("q"):
-                print("User chose to quit due to STRATUS API throttling.")
+                logger.info("User chose to quit due to STRATUS API throttling.")
                 return
             # Default or 'u' triggers upload of cached JSON
             fallback_path = FALLBACK_JSON_PATH
             if not os.path.exists(fallback_path):
                 # Prompt the user for an alternate JSON file path
-                print(
-                    f"WARNING: The default cached JSON file '{fallback_path}' was not found.",
-                    file=sys.stderr,
-                )
+                logger.warning("The default cached JSON file '%s' was not found.", fallback_path)
                 # Ask for a file path with a timeout of 60 seconds.  If the user
                 # provides nothing, the script will abort.  Use select for a
                 # timeout if available.
@@ -804,25 +818,22 @@ def main():
                     except Exception:
                         user_path = ""
                 if not user_path:
-                    print("No JSON file provided. Exiting due to throttled API.")
+                    logger.info("No JSON file provided. Exiting due to throttled API.")
                     return
                 fallback_path = user_path
                 if not os.path.exists(fallback_path):
-                    print(
-                        f"The specified JSON file '{fallback_path}' does not exist. Exiting.",
-                        file=sys.stderr,
-                    )
+                    logger.error("The specified JSON file '%s' does not exist. Exiting.", fallback_path)
                     return
             try:
                 with open(fallback_path, "r", encoding="utf-8") as f:
                     rows = json.load(f)
-                print(
-                    f"Loaded {len(rows)} records from JSON file '{fallback_path}' due to API throttling."
+                logger.info(
+                    "Loaded %d records from JSON file '%s' due to API throttling.",
+                    len(rows), fallback_path,
                 )
             except Exception as exc:
-                print(
-                    f"ERROR: Failed to read JSON file '{fallback_path}': {exc}",
-                    file=sys.stderr,
+                logger.error(
+                    "Failed to read JSON file '%s': %s", fallback_path, exc, exc_info=True,
                 )
                 return
         else:
@@ -837,16 +848,16 @@ def main():
         with open(FALLBACK_JSON_PATH, "w", encoding="utf-8") as f:
             json.dump(rows, f)
     except Exception as exc:
-        print(
-            f"WARNING: Could not write fallback JSON cache to '{FALLBACK_JSON_PATH}': {exc}",
-            file=sys.stderr,
+        logger.warning(
+            "Could not write fallback JSON cache to '%s': %s", FALLBACK_JSON_PATH, exc,
         )
-    print(f"Loaded {len(rows)} records for reportId={REPORT_ID}")
+    logger.info("Loaded %d records for reportId=%s", len(rows), REPORT_ID)
 
-    print("[2/6] Converting to DataFrame...")
+    logger.info("[2/6] Converting to DataFrame...")
     df = dataframe_from_records(rows)
+    logger.debug("DataFrame shape after conversion: %s", df.shape)
     if df.empty:
-        print("No data returned from STRATUS for this report.")
+        logger.info("No data returned from STRATUS for this report.")
         return
 
     # Keep a copy of the full DataFrame before filtering so that excluded
@@ -884,21 +895,23 @@ def main():
         excluded_pkg_ids = set(excluded_df[pkg_id_col].astype(str).tolist())
         removed = int(exclude_mask.sum())
         if removed:
-            print(
-                f"[FILTER] Excluding {removed} packages by status using column '{status_col}':"
+            logger.info(
+                "[FILTER] Excluding %d packages by status using column '%s':",
+                removed, status_col,
             )
             # Show a breakdown of excluded statuses for logging
             try:
                 counts = full_df.loc[exclude_mask, status_col].astype(str).value_counts().head(20)
                 for k, v in counts.items():
-                    print(f"  - {k}: {v}")
+                    logger.info("  - %s: %s", k, v)
             except Exception:
                 pass
         # Build df from only non-excluded packages
         df = full_df.loc[~exclude_mask].reset_index(drop=True)
+        logger.debug("DataFrame shape after exclusion: %s, excluded_pkg_ids=%d", df.shape, len(excluded_pkg_ids))
     else:
-        print(
-            "[FILTER] WARNING: Could not confidently detect a Status/TrackingStatus column in this report. "
+        logger.warning(
+            "[FILTER] Could not confidently detect a Status/TrackingStatus column in this report. "
             "No status filtering applied."
         )
         df = full_df
@@ -925,7 +938,7 @@ def main():
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     write_df[AUDIT_COL] = now_utc
 
-    print("[3/6] Loading Smartsheet and columns...")
+    logger.info("[3/6] Loading Smartsheet and columns...")
     sheet, col_id_by_name = get_sheet_and_columns(smartsheet_client, sheet_id)
     # Build a mapping from column title to column type.  This will be used
     # later to convert values into appropriate types before sending to
@@ -943,6 +956,7 @@ def main():
     if AUTO_CREATE_COLUMNS:
         missing = [t for t in needed if t not in col_id_by_name]
         if missing:
+            logger.debug("Creating %d missing columns in primary sheet", len(missing))
             cols_to_add = []
             anchor_index = len(col_id_by_name)
             for t in missing:
@@ -960,21 +974,22 @@ def main():
     else:
         missing = [t for t in needed if t not in col_id_by_name]
         if missing:
-            print(
-                "ERROR: Missing columns and AUTO_CREATE_COLUMNS=False:",
-                missing,
+            logger.error(
+                "Missing columns and AUTO_CREATE_COLUMNS=False: %s", missing,
             )
             sys.exit(2)
 
-    print("[4/6] Building existing row map...")
+    logger.info("[4/6] Building existing row map...")
     existing = build_existing_row_map(sheet)
+    logger.debug("Existing row map size: %d", len(existing))
 
     # Optionally delete excluded packages already present in Smartsheet
     if DELETE_EXCLUDED_FROM_SHEET and excluded_pkg_ids:
         delete_row_ids = [existing[k]["rowId"] for k in excluded_pkg_ids if k in existing]
         if delete_row_ids:
-            print(
-                f"[DELETE] Removing {len(delete_row_ids)} excluded packages from Smartsheet..."
+            logger.info(
+                "[DELETE] Removing %d excluded packages from Smartsheet...",
+                len(delete_row_ids),
             )
             def chunk_iterable(lst, n):
                 for i in range(0, len(lst), n):
@@ -1003,7 +1018,7 @@ def main():
     )
     qrcode_src_df = pick_col(df, ["STRATUS.Package.QRCode"])
 
-    print("[5/6] Preparing row diffs...")
+    logger.info("[5/6] Preparing row diffs...")
     adds: List[smartsheet.models.Row] = []
     updates: List[smartsheet.models.Row] = []
     for idx, r in write_df.iterrows():
@@ -1078,7 +1093,7 @@ def main():
             row.cells = cells_for_row_update(col_id_by_name, row_data, hyperlinks=hyperlinks)
             adds.append(row)
 
-    print(f"[6/6] Writing to Smartsheet: {len(adds)} adds, {len(updates)} updates")
+    logger.info("[6/6] Writing to Smartsheet: %d adds, %d updates", len(adds), len(updates))
     # Write adds in batches
     def chunk_iter(lst, n):
         for i in range(0, len(lst), n):
@@ -1090,6 +1105,7 @@ def main():
             continue
         resp = smartsheet_client.Sheets.add_rows(sheet_id, batch)
         added += len(resp.result)
+        logger.debug("Added batch of %d rows", len(resp.result))
 
     updated_count = 0
     for batch in chunk_iter(updates, 400):
@@ -1100,6 +1116,7 @@ def main():
             continue
         resp = smartsheet_client.Sheets.update_rows(sheet_id, batch)
         updated_count += len(resp.result)
+        logger.debug("Updated batch of %d rows", len(resp.result))
 
     # Synchronize excluded packages to the secondary sheet, if configured.  This
     # occurs after updates to the primary sheet so that the audit timestamp
@@ -1117,15 +1134,15 @@ def main():
                 json_keys=json_keys_all,
             )
     except Exception as exc:
-        print(f"[EXCLUDED] ERROR during secondary sync: {exc}", file=sys.stderr)
+        logger.error("[EXCLUDED] ERROR during secondary sync: %s", exc, exc_info=True)
 
-    print(f"Done. Added {added}, Updated {updated_count}. Timestamp (UTC): {now_utc}")
+    logger.info("Done. Added %d, Updated %d. Timestamp (UTC): %s", added, updated_count, now_utc)
 
 
 if __name__ == "__main__":
     try:
         main()
     except Exception as e:
-        print(f"ERROR: {e}", file=sys.stderr)
+        logger.error("ERROR: %s", e, exc_info=True)
         sys.exit(2)
 
