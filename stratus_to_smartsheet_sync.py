@@ -46,6 +46,9 @@ except Exception:
 
 import smartsheet
 
+from stratus_logger import get_logger
+logger = get_logger(__name__)
+
 SHEET_ID = 750890915942276
 
 # Column names in Smartsheet (exact text) we plan to write to.
@@ -92,6 +95,7 @@ def fetch_stratus_csv():
 
     The function prints each attempted URL and header combination to aid troubleshooting.
     """
+    logger.debug("Entering fetch_stratus_csv()")
     base_url = os.getenv("STRATUS_BASE_URL", "https://api.gtpstratus.com").rstrip("/")
     report_id = os.getenv("STRATUS_REPORT_ID")
     company_id = os.getenv("STRATUS_COMPANY_ID")
@@ -99,6 +103,8 @@ def fetch_stratus_csv():
     project_id = os.getenv("STRATUS_PROJECT_ID", "0")
     model_id = os.getenv("STRATUS_MODEL_ID", "0")
     session_cookie = os.getenv("STRATUS_COOKIE", "")
+    logger.debug("base_url=%s, company_id=%s, project_id=%s, model_id=%s, report_id=%s",
+                 base_url, company_id, project_id, model_id, report_id)
 
     # Build a list of authentication header sets. Some tenants require different header names.
     header_sets = []
@@ -147,46 +153,56 @@ def fetch_stratus_csv():
             candidates.append(f"{base_url}/v1/company/{company_id}/report/{report_id}/output?format=csv")
         candidates.append(f"{base_url}/v1/report/{report_id}/output?format=csv")
 
+    logger.debug("Built %d candidate URLs and %d header sets", len(candidates), len(header_sets))
+
     last_error = None
     # Attempt each URL with each header permutation
     for url in candidates:
         for headers in header_sets:
             try:
-                # Print debug information about the attempt
-                print(f"Trying: {url} with headers: {list(headers.keys())}")
+                logger.debug("Trying: %s with headers: %s", url, list(headers.keys()))
                 resp = requests.get(url, headers=headers, timeout=60)
-                print("  ->", resp.status_code, resp.headers.get("content-type", ""), resp.text[:200])
+                logger.debug("Response: status=%s, content-type=%s, body_preview=%s", resp.status_code, resp.headers.get("content-type", ""), resp.text[:200])
                 # Accept 200 responses with content as success
                 if resp.ok and resp.content:
+                    logger.info("Successfully fetched STRATUS CSV from %s (%d bytes)", url, len(resp.content))
                     return resp.content
                 last_error = f"{resp.status_code} {resp.text[:300]}"
             except Exception as e:
+                logger.error("Request to %s failed: %s", url, e, exc_info=True)
                 last_error = str(e)
     # Fallback to a local CSV file if configured
     fallback = os.getenv("STRATUS_CSV_FALLBACK")
     if fallback and os.path.exists(fallback):
+        logger.info("Using local CSV fallback: %s", fallback)
         with open(fallback, "rb") as f:
             return f.read()
     # If nothing worked, raise an error with the last encountered message
+    logger.error("All STRATUS CSV fetch attempts failed. Last error: %s", last_error)
     raise RuntimeError(f"Failed to fetch STRATUS CSV. Last error: {last_error or 'no candidates tried'}")
 
 def get_sheet_and_columns(smartsheet_client, sheet_id):
+    logger.debug("Entering get_sheet_and_columns(sheet_id=%s)", sheet_id)
     sheet = smartsheet_client.Sheets.get_sheet(sheet_id)
     col_id_by_name = {c.title: c.id for c in sheet.columns}
+    logger.debug("Sheet loaded: %d columns, %d rows", len(col_id_by_name), len(sheet.rows))
     return sheet, col_id_by_name
 
 def dataframe_from_csv_bytes(csv_bytes):
+    logger.debug("Entering dataframe_from_csv_bytes(csv_bytes length=%d)", len(csv_bytes))
     # Handle potential BOM and encoding issues robustly
     text = csv_bytes.decode("utf-8-sig", errors="replace")
     df = pd.read_csv(io.StringIO(text))
     # Normalize column names (strip)
     df.columns = [c.strip() for c in df.columns]
+    logger.debug("DataFrame created: shape=%s, columns=%s", df.shape, list(df.columns))
     return df
 
 def build_existing_row_map(sheet):
     """
     Returns dict: {STRATUS_PackageId: {"rowId": id, "cells": {colName: value}}}
     """
+    logger.debug("Entering build_existing_row_map(sheet rows=%d)", len(sheet.rows))
     # Find the column index for STRATUS_PackageId
     id_col = None
     for c in sheet.columns:
@@ -194,6 +210,7 @@ def build_existing_row_map(sheet):
             id_col = c.id
             break
     if not id_col:
+        logger.error("Smartsheet missing required 'STRATUS_PackageId' column")
         raise RuntimeError("Smartsheet must have a 'STRATUS_PackageId' column.")
 
     existing = {}
@@ -213,6 +230,7 @@ def build_existing_row_map(sheet):
                 key = val
         if key:
             existing[str(key)] = {"rowId": row.id, "cells": by_name}
+    logger.debug("Built existing row map with %d entries", len(existing))
     return existing
 
 def cells_for_row_update(col_id_by_name, data_by_colname):
@@ -220,6 +238,7 @@ def cells_for_row_update(col_id_by_name, data_by_colname):
     data_by_colname: dict of {sheet_col_name: value}
     Returns list of smartsheet.models.Cell for an update.
     """
+    logger.debug("Entering cells_for_row_update(columns=%s)", list(data_by_colname.keys()))
     cells = []
     for name, value in data_by_colname.items():
         if name not in col_id_by_name:
@@ -231,26 +250,29 @@ def cells_for_row_update(col_id_by_name, data_by_colname):
     return cells
 
 def main():
+    logger.debug("Entering main()")
     token = os.getenv("SMARTSHEET_ACCESS_TOKEN")
     if not token:
-        print("ERROR: Set SMARTSHEET_ACCESS_TOKEN env var.", file=sys.stderr)
+        logger.error("SMARTSHEET_ACCESS_TOKEN environment variable is not set.")
         sys.exit(2)
 
     smartsheet_client = smartsheet.Smartsheet(token)
     smartsheet_client.errors_as_exceptions(True)
 
-    print("[1/5] Fetching STRATUS CSV...")
+    logger.info("[1/5] Fetching STRATUS CSV...")
     csv_bytes = fetch_stratus_csv()
     stratus_df = dataframe_from_csv_bytes(csv_bytes)
 
     # Ensure required columns exist
     missing = [k for k in STRATUS_TO_SHEET.keys() if k not in stratus_df.columns]
     if missing:
-        print("WARNING: STRATUS CSV missing expected columns:", missing)
+        logger.warning("STRATUS CSV missing expected columns: %s", missing)
 
     # Keep only columns we care about
     subset_cols = [c for c in STRATUS_TO_SHEET.keys() if c in stratus_df.columns]
     work_df = stratus_df[subset_cols].copy()
+
+    logger.debug("Working DataFrame shape: %s, columns: %s", work_df.shape, list(work_df.columns))
 
     # Convert %Complete like "10.0 %" to numeric if needed
     if "%Complete" in work_df.columns:
@@ -273,16 +295,16 @@ def main():
     now_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     work_df["Last Sync From STRATUS (UTC)"] = now_utc
 
-    print("[2/5] Loading Smartsheet and columns...")
+    logger.info("[2/5] Loading Smartsheet and columns...")
     sheet, col_id_by_name = get_sheet_and_columns(smartsheet_client, SHEET_ID)
 
-    print("[3/5] Building existing row map...")
+    logger.info("[3/5] Building existing row map...")
     existing = build_existing_row_map(sheet)
 
     # Validate required columns exist in Smartsheet
     for col in TARGET_COLUMNS:
         if col not in col_id_by_name:
-            print(f"WARNING: Column '{col}' not found in Smartsheet; it will be skipped.")
+            logger.warning("Column '%s' not found in Smartsheet; it will be skipped.", col)
 
     # Prepare adds/updates
     adds = []
@@ -326,7 +348,7 @@ def main():
             row.cells = cells_for_row_update(col_id_by_name, data)
             adds.append(row)
 
-    print(f"[4/5] Preparing to write: {len(adds)} adds, {len(updates)} updates")
+    logger.info("[4/5] Preparing to write: %d adds, %d updates", len(adds), len(updates))
 
     # Batch write in chunks (Smartsheet limits)
     def chunks(lst, n):
@@ -336,15 +358,19 @@ def main():
     # Adds
     added = 0
     for batch in chunks(adds, 400):  # safe batch size
+        logger.debug("Adding batch of %d rows to Smartsheet", len(batch))
         resp = smartsheet_client.Sheets.add_rows(SHEET_ID, batch)
         added += len(resp.result)
+        logger.debug("Batch add complete, %d rows added so far", added)
     # Updates
     updated = 0
     for batch in chunks(updates, 400):
+        logger.debug("Updating batch of %d rows in Smartsheet", len(batch))
         resp = smartsheet_client.Sheets.update_rows(SHEET_ID, batch)
         updated += len(resp.result)
+        logger.debug("Batch update complete, %d rows updated so far", updated)
 
-    print(f"[5/5] Done. Added {added}, Updated {updated}. Timestamp: {now_utc}")
+    logger.info("[5/5] Done. Added %d, Updated %d. Timestamp: %s", added, updated, now_utc)
 
 if __name__ == "__main__":
     main()
