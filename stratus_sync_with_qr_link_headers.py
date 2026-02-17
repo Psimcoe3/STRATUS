@@ -76,7 +76,9 @@ def _prompt_user_on_throttle() -> str:
         select = None  # type: ignore
 
     logger.info(
-        "The STRATUS API returned an HTTP 429 response (throttled due to excessive usage)."
+        "The STRATUS API returned an HTTP 429 response (throttled due to excessive usage). "
+        "User may either quit and try again later or proceed by uploading the existing "
+        "cached JSON file to Smartsheet. Defaulting to upload after 60 seconds."
     )
     print(
         "\nYou may either quit and try again later or proceed by uploading the existing\n"
@@ -753,7 +755,7 @@ def main():
     token = os.getenv("SMARTSHEET_ACCESS_TOKEN")
     sheet_id_str = os.getenv("SMARTSHEET_SHEET_ID")
     if not token or not sheet_id_str:
-        logger.error("Set SMARTSHEET_ACCESS_TOKEN and SMARTSHEET_SHEET_ID in .env")
+        logger.error("Missing required environment variables. Please set SMARTSHEET_ACCESS_TOKEN and SMARTSHEET_SHEET_ID (e.g., via .env).")
         sys.exit(2)
     try:
         sheet_id = int(sheet_id_str)

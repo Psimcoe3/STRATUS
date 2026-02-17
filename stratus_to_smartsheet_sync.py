@@ -253,7 +253,7 @@ def main():
     logger.debug("Entering main()")
     token = os.getenv("SMARTSHEET_ACCESS_TOKEN")
     if not token:
-        logger.error("SMARTSHEET_ACCESS_TOKEN environment variable is not set.")
+        logger.error("Missing required environment variable. Please set SMARTSHEET_ACCESS_TOKEN (e.g., via .env).")
         sys.exit(2)
 
     smartsheet_client = smartsheet.Smartsheet(token)
